@@ -112,7 +112,6 @@ def _format_duration(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
 
 def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, VideoMetadata]:
     """
@@ -135,7 +134,6 @@ def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, Video
 
     p = Path(video_path).resolve()
 
-    # ── Validate input ────────────────────────────────────────────────────────
     if not p.exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
 
@@ -145,7 +143,6 @@ def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, Video
             f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
 
-    # ── Probe for metadata ────────────────────────────────────────────────────
     meta = probe_video(str(p))
 
     if not meta.has_audio:
@@ -153,7 +150,6 @@ def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, Video
             f"'{p.name}' has no audio stream. Cannot transcribe a silent video."
         )
 
-    # ── Build output path ─────────────────────────────────────────────────────
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     audio_path = Path(output_dir) / f"{meta.title}_audio.wav"
 
@@ -161,7 +157,6 @@ def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, Video
     if audio_path.exists():
         return str(audio_path), meta
 
-    # ── Run FFmpeg extraction ─────────────────────────────────────────────────
     # Flags explained:
     #   -vn          : drop video stream
     #   -acodec pcm_s16le : uncompressed 16-bit PCM (what Whisper wants)
