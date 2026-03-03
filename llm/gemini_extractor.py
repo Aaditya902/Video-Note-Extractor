@@ -1,16 +1,3 @@
-"""
-llm/gemini_extractor.py — Extract notes using Google Gemini API (free tier).
-
-Free tier limits (as of 2025):
-  - gemini-1.5-flash: 15 RPM, 1500 RPD, 1M token context — perfect for this
-  - No credit card required
-  - Get your key at: aistudio.google.com
-
-Two-stage approach:
-  1. Multi-query retrieval from vector store (RAG)
-  2. Pass chronologically ordered chunks to Gemini → structured JSON
-"""
-
 import json
 import os
 
@@ -76,20 +63,7 @@ def _build_context(chunks: list[dict]) -> str:
 
 
 def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult:
-    """
-    Run multi-query retrieval then call Gemini to extract structured notes.
 
-    Args:
-        store:        Populated VectorStore with all video chunks
-        video_title:  Optional title hint for the LLM
-
-    Returns:
-        Validated ExtractionResult
-
-    Raises:
-        EnvironmentError: if GEMINI_API_KEY is not set
-        ValueError:       if Gemini returns invalid JSON
-    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError(
@@ -98,7 +72,6 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
             "Then add to .env: GEMINI_API_KEY=your_key_here"
         )
 
-    # ── RAG: multi-query retrieval ────────────────────────────────────────────
     seen_texts: set[str] = set()
     all_chunks: list[dict] = []
 
@@ -117,7 +90,6 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
 
     prompt = PROMPT_TEMPLATE.format(context=context)
 
-    # ── Gemini API call ───────────────────────────────────────────────────────
     genai.configure(api_key=api_key)
 
     model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
@@ -142,7 +114,6 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
             raw = raw[4:]
         raw = raw.strip()
 
-    # ── Parse + validate ──────────────────────────────────────────────────────
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
