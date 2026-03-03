@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────
+# Video Note Extractor — Python dependencies
+# Python 3.10+ required
+# Install: pip install -r requirements.txt
+# ─────────────────────────────────────────────
+
+# ── Web UI ────────────────────────────────────
+streamlit>=1.32.0           # Browser-based UI (run: streamlit run app.py)
+
+# ── LLM (FREE — no credit card needed) ───────
+google-generativeai>=0.7.0  # Gemini API — free at aistudio.google.com
+                             # Free tier: 1500 req/day, 1M token context
+
+# ── Core ──────────────────────────────────────
+python-dotenv>=1.0.0        # Load .env for API keys
+
+# ── Ingestion: YouTube ────────────────────────
+yt-dlp>=2024.1.0            # YouTube audio download
+# NOTE: also requires ffmpeg installed on your system (NOT a pip package)
+# macOS:  brew install ffmpeg
+# Ubuntu: sudo apt install ffmpeg
+# Windows: https://www.gyan.dev/ffmpeg/builds/
+
+# ── Ingestion: Local video (.mp4 / .mkv etc.) ─
+# No pip package needed — uses ffmpeg via subprocess (must be on PATH)
+
+# ── Transcription (FREE — runs fully offline) ─
+openai-whisper>=20231117    # Local speech-to-text, no API key needed
+torch>=2.0.0                # Required by Whisper
+# For faster GPU transcription, install torch with CUDA instead:
+# pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+# ── RAG Pipeline (FREE — runs fully offline) ──
+sentence-transformers>=2.7.0  # Local embeddings, ~80MB one-time download
+chromadb>=0.4.0               # In-memory vector store
+
+# ── Data validation ───────────────────────────
+pydantic>=2.0.0             # Typed models, validates LLM JSON output
+
+# ── CLI output ────────────────────────────────
+rich>=13.0.0                # Colored terminal output, spinners, tables
+
+# ── Transitive deps ───────────────────────────
+numpy>=1.24.0
+tqdm>=4.65.0
