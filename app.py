@@ -1,4 +1,15 @@
+"""
+app.py - Streamlit web UI for Video Note Extractor.
+
+Run with:
+    streamlit run app.py
+
+Key design: ALL mutable state lives in st.session_state so it survives
+Streamlit's full-script reruns that happen on every widget interaction.
+"""
+
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -15,6 +26,7 @@ st.set_page_config(
 )
 
 COLORS = ["#00FFB2", "#7C6FFF", "#FF6B9D", "#FFB347", "#00D4FF", "#FF6B6B", "#A8FF78"]
+
 STEPS = [
     ("ingest",     "Ingesting input"),
     ("transcribe", "Transcribing with Whisper"),
@@ -55,7 +67,28 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background:#0A0A0F;col
 </style>"""
 
 
-def status_html(done, active=None, err=None):
+# ── Session state initialiser ──────────────────────────────────────────────────
+
+def init_state():
+    """Initialise all session_state keys on first run."""
+    defaults = {
+        "input_type":  None,   # "video" | "youtube" | "file"
+        "input_data":  None,   # path str | url str | (fname, bytes)
+        "ready":       False,
+        "running":     False,
+        "result":      None,
+        "md_path":     None,
+        "json_path":   None,
+        "error":       None,
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
+# ── Status HTML ────────────────────────────────────────────────────────────────
+
+def status_html(done: list, active: str = None, err: str = None) -> str:
     h = '<div class="status-box">'
     for k, label in STEPS:
         if k in done:
@@ -69,58 +102,18 @@ def status_html(done, active=None, err=None):
     return h + '</div>'
 
 
-def render_results(result, md_path, json_path):
-    md = Path(md_path).read_text(encoding="utf-8")
-    js = Path(json_path).read_text(encoding="utf-8")
+# ── Pipeline ───────────────────────────────────────────────────────────────────
 
-    st.markdown(
-        f'<div class="result-header">'
-        f'<div class="result-title">{result.title}</div>'
-        f'<div class="result-summary">{result.summary}</div></div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="sec-label">Key Concepts</div>', unsafe_allow_html=True)
-    tags = "".join(
-        f'<span class="concept-tag" style="color:{COLORS[i%len(COLORS)]};'
-        f'background:{COLORS[i%len(COLORS)]}11;border:1px solid {COLORS[i%len(COLORS)]}33">{c}</span>'
-        for i, c in enumerate(result.key_concepts)
-    )
-    st.markdown(tags, unsafe_allow_html=True)
-
-    st.markdown('<div class="sec-label">Notes</div>', unsafe_allow_html=True)
-    for i, note in enumerate(result.notes):
-        color = COLORS[i % len(COLORS)]
-        ts = f'<div class="note-ts" style="color:{color}">{note.timestamp}</div>' if note.timestamp else ""
-        st.markdown(
-            f'<div class="note-card" style="border-color:{color};background:{color}08">'
-            f'{ts}<div class="note-heading">{note.heading}</div>'
-            f'<div class="note-content">{note.content}</div></div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="sec-label">Action Items</div>', unsafe_allow_html=True)
-    for item in result.action_items:
-        st.markdown(
-            f'<div class="action-item">'
-            f'<span class="action-bullet">&#9658;</span><span>{item}</span></div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="sec-label">Export</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    stem = Path(md_path).stem
-    with c1:
-        st.download_button("Download Markdown", data=md, file_name=f"{stem}.md",
-                           mime="text/markdown", use_container_width=True)
-    with c2:
-        st.download_button("Download JSON", data=js, file_name=f"{stem}.json",
-                           mime="application/json", use_container_width=True)
-
-
-def run_pipeline(itype, idata, wmodel, sbox):
+def run_pipeline(itype: str, idata, wmodel: str, sbox):
+    """Execute the full pipeline, updating sbox with live status."""
     done = []
     tmp  = tempfile.mkdtemp()
+
+    # Add project root to sys.path so relative imports resolve when running
+    # from any working directory
+    project_root = str(Path(__file__).parent)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
 
     def upd(active=None, err=None):
         sbox.markdown(status_html(done, active, err), unsafe_allow_html=True)
@@ -180,20 +173,84 @@ def run_pipeline(itype, idata, wmodel, sbox):
 
         upd("save")
         from output.formatter import save_markdown, save_json
-        md = save_markdown(result, output_dir="data")
-        js = save_json(result, output_dir="data")
+        output_dir = str(Path(__file__).parent / "data")
+        md   = save_markdown(result, output_dir=output_dir)
+        js   = save_json(result,     output_dir=output_dir)
         done.append("save")
         upd()
-        return result, md, js
+
+        return result, md, js, None
 
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"\n[Pipeline ERROR]\n{tb}")   # always print to terminal
         upd(active=None, err=str(e))
-        return None, None, None
+        return None, None, None, str(e)
 
+
+# ── Results renderer ───────────────────────────────────────────────────────────
+
+def render_results(result, md_path: str, json_path: str):
+    md = Path(md_path).read_text(encoding="utf-8")
+    js = Path(json_path).read_text(encoding="utf-8")
+
+    st.markdown(
+        f'<div class="result-header">'
+        f'<div class="result-title">{result.title}</div>'
+        f'<div class="result-summary">{result.summary}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="sec-label">Key Concepts</div>', unsafe_allow_html=True)
+    tags = "".join(
+        f'<span class="concept-tag" style="color:{COLORS[i%len(COLORS)]};'
+        f'background:{COLORS[i%len(COLORS)]}11;border:1px solid {COLORS[i%len(COLORS)]}33">{c}</span>'
+        for i, c in enumerate(result.key_concepts)
+    )
+    st.markdown(tags, unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-label">Notes</div>', unsafe_allow_html=True)
+    for i, note in enumerate(result.notes):
+        color = COLORS[i % len(COLORS)]
+        ts = (
+            f'<div class="note-ts" style="color:{color}">{note.timestamp}</div>'
+            if note.timestamp else ""
+        )
+        st.markdown(
+            f'<div class="note-card" style="border-color:{color};background:{color}08">'
+            f'{ts}<div class="note-heading">{note.heading}</div>'
+            f'<div class="note-content">{note.content}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="sec-label">Action Items</div>', unsafe_allow_html=True)
+    for item in result.action_items:
+        st.markdown(
+            f'<div class="action-item">'
+            f'<span class="action-bullet">&#9658;</span><span>{item}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="sec-label">Export</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    stem = Path(md_path).stem
+    with c1:
+        st.download_button("Download Markdown", data=md, file_name=f"{stem}.md",
+                           mime="text/markdown", use_container_width=True)
+    with c2:
+        st.download_button("Download JSON", data=js, file_name=f"{stem}.json",
+                           mime="application/json", use_container_width=True)
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
+    init_state()
+
     st.markdown(_CSS, unsafe_allow_html=True)
 
+    # Header
     st.markdown(
         '<div style="display:flex;align-items:center;gap:14px;margin-bottom:2rem;'
         'padding-bottom:1.5rem;border-bottom:1px solid #1E1E2E">'
@@ -209,6 +266,7 @@ def main():
         unsafe_allow_html=True,
     )
 
+    # API key guard
     if not os.getenv("GEMINI_API_KEY"):
         st.error(
             "**GEMINI_API_KEY not set.**\n\n"
@@ -217,62 +275,110 @@ def main():
         )
         st.stop()
 
+    # Sidebar
     with st.sidebar:
         st.markdown("### Settings")
         wmodel = st.selectbox(
             "Whisper Model",
             ["tiny", "base", "small", "medium", "large"],
             index=1,
-            help="Larger = more accurate but slower. base is a good default.",
+            help="Larger = more accurate but slower.",
         )
-        st.caption(f"Selected: **{wmodel}**\nRuns fully offline - no API cost.")
+        st.caption(f"Selected: **{wmodel}**\nRuns fully offline.")
         st.markdown("---")
         st.markdown("**Free tier limits**")
-        st.caption("Gemini: 1,500 req/day, 15/min\nWhisper: unlimited (local)\nEmbeddings: unlimited (local)")
+        st.caption("Gemini: 1,500 req/day · 15/min\nWhisper: unlimited (local)\nEmbeddings: unlimited (local)")
+
+    # ── Input tabs ─────────────────────────────────────────────────────────────
+    # IMPORTANT: callbacks write to session_state so values persist through
+    # the rerun that happens when the Extract button is clicked.
 
     t1, t2, t3 = st.tabs(["VIDEO FILE", "YOUTUBE URL", "TRANSCRIPT FILE"])
-    itype = None
-    idata = None
-    ready = False
 
     with t1:
         st.markdown("##### Upload a video file")
-        st.caption("Drag and drop or click to browse. Supported: .mp4  .mkv  .mov  .avi  .webm  .m4v  .flv")
-        uv = st.file_uploader("video", type=["mp4","mkv","mov","avi","webm","m4v","flv"],
-                               label_visibility="collapsed", key="vu")
-        if uv:
+        st.caption("Supported: .mp4  .mkv  .mov  .avi  .webm  .m4v  .flv")
+        uv = st.file_uploader(
+            "video",
+            type=["mp4", "mkv", "mov", "avi", "webm", "m4v", "flv"],
+            label_visibility="collapsed",
+            key="vu",
+        )
+        if uv is not None:
+            # Save to a real temp file so FFmpeg can read it by path
             tf = tempfile.NamedTemporaryFile(delete=False, suffix=Path(uv.name).suffix)
-            tf.write(uv.read()); tf.flush(); tf.close()
-            itype, idata = "video", tf.name
+            tf.write(uv.read())
+            tf.flush()
+            tf.close()
+            st.session_state.input_type = "video"
+            st.session_state.input_data = tf.name
+            st.session_state.ready      = True
             st.success(f"Ready: {uv.name}  ({uv.size // 1024:,} KB)")
-            ready = True
 
     with t2:
         st.markdown("##### Paste a YouTube URL")
-        url = st.text_input("url", placeholder="https://www.youtube.com/watch?v=...",
-                            label_visibility="collapsed")
+        url = st.text_input(
+            "url",
+            placeholder="https://www.youtube.com/watch?v=...",
+            label_visibility="collapsed",
+            key="yt_url",
+        )
         if url and url.startswith("http"):
-            itype, idata = "youtube", url
-            ready = True
+            st.session_state.input_type = "youtube"
+            st.session_state.input_data = url
+            st.session_state.ready      = True
 
     with t3:
         st.markdown("##### Upload a transcript file")
-        st.caption("Drag and drop or click to browse. Supported: .txt  .srt  .vtt")
-        uf = st.file_uploader("transcript", type=["txt","srt","vtt"],
-                               label_visibility="collapsed", key="fu")
-        if uf:
-            itype, idata = "file", (uf.name, uf.read())
+        st.caption("Supported: .txt (optional [MM:SS] timestamps)  .srt  .vtt")
+        uf = st.file_uploader(
+            "transcript",
+            type=["txt", "srt", "vtt"],
+            label_visibility="collapsed",
+            key="fu",
+        )
+        if uf is not None:
+            st.session_state.input_type = "file"
+            st.session_state.input_data = (uf.name, uf.read())
+            st.session_state.ready      = True
             st.success(f"Ready: {uf.name}  ({uf.size:,} bytes)")
-            ready = True
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("EXTRACT NOTES", disabled=not ready, use_container_width=True):
-        sb = st.empty()
-        result, md, js = run_pipeline(itype, idata, wmodel, sb)
-        if result:
-            st.markdown("---")
-            render_results(result, md, js)
+    # ── Extract button ─────────────────────────────────────────────────────────
+    if st.button(
+        "EXTRACT NOTES",
+        disabled=not st.session_state.ready,
+        use_container_width=True,
+    ):
+        st.session_state.result    = None
+        st.session_state.md_path   = None
+        st.session_state.json_path = None
+        st.session_state.error     = None
+        st.session_state.running   = True
+
+        sbox = st.empty()
+        result, md, js, err = run_pipeline(
+            st.session_state.input_type,
+            st.session_state.input_data,
+            wmodel,
+            sbox,
+        )
+
+        st.session_state.running   = False
+        st.session_state.result    = result
+        st.session_state.md_path   = md
+        st.session_state.json_path = js
+        st.session_state.error     = err
+
+    # ── Render results (persists across reruns) ────────────────────────────────
+    if st.session_state.result is not None:
+        st.markdown("---")
+        render_results(
+            st.session_state.result,
+            st.session_state.md_path,
+            st.session_state.json_path,
+        )
 
 
 if __name__ == "__main__":

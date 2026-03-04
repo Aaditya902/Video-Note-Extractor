@@ -9,6 +9,10 @@ enabled by swapping to a PersistentClient.
 import chromadb
 from chromadb.config import Settings
 
+import sys
+from pathlib import Path as _root_path
+sys.path.insert(0, str(_root_path(__file__).resolve().parent.parent))
+
 from models import Chunk
 from processing.embedder import embed_texts, embed_query
 

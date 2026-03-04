@@ -10,6 +10,10 @@ from functools import lru_cache
 
 import whisper
 
+import sys
+from pathlib import Path as _root_path
+sys.path.insert(0, str(_root_path(__file__).resolve().parent.parent))
+
 from models import TranscriptSegment
 
 

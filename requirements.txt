@@ -8,8 +8,9 @@
 streamlit>=1.32.0           # Browser-based UI (run: streamlit run app.py)
 
 # ── LLM (FREE — no credit card needed) ───────
-google-generativeai>=0.7.0  # Gemini API — free at aistudio.google.com
+google-genai>=1.0.0         # Gemini API — free at aistudio.google.com
                              # Free tier: 1500 req/day, 1M token context
+                             # (replaces deprecated google-generativeai)
 
 # ── Core ──────────────────────────────────────
 python-dotenv>=1.0.0        # Load .env for API keys

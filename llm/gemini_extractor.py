@@ -1,8 +1,29 @@
+"""
+llm/gemini_extractor.py — Extract notes using Google Gemini API (free tier).
+
+Free tier limits (as of 2026):
+  - gemini-2.0-flash: 15 RPM, 1500 RPD, 1M token context — perfect for this
+  - No credit card required
+  - Get your key at: aistudio.google.com
+
+SDK: google-genai (replaces deprecated google-generativeai)
+  pip install google-genai
+
+Two-stage approach:
+  1. Multi-query retrieval from vector store (RAG)
+  2. Pass chronologically ordered chunks to Gemini -> structured JSON
+"""
+
 import json
 import os
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
+
+import sys
+from pathlib import Path as _root_path
+sys.path.insert(0, str(_root_path(__file__).resolve().parent.parent))
 
 from models import ExtractionResult, Note
 from processing.vector_store import VectorStore
@@ -18,11 +39,9 @@ RETRIEVAL_QUERIES = [
     "conclusions summary takeaways results",
 ]
 
-# Gemini doesn't have a separate system prompt field in the basic API —
-# we prepend it as the first part of the user message.
 PROMPT_TEMPLATE = """You are an expert note-taking assistant. You receive segments of a video transcript and must extract structured, high-quality notes.
 Be concise but complete. Every note should stand alone as a useful piece of information.
-Respond ONLY with valid JSON — no markdown fences, no preamble, no explanation.
+Respond ONLY with valid JSON — no markdown fences, no preamble, no explanation. Do not truncate.
 
 Extract structured notes from these transcript segments:
 
@@ -50,7 +69,8 @@ Rules:
 - Notes should be substantive — not just restating the timestamp
 - Generate 3-7 clear, specific action items
 - List 5-10 key concepts/terms
-- Timestamps should match the [MM:SS] markers in the context"""
+- Timestamps should match the [MM:SS] markers in the context
+- You MUST produce complete, valid JSON — never stop mid-string"""
 
 
 def _build_context(chunks: list[dict]) -> str:
@@ -63,7 +83,20 @@ def _build_context(chunks: list[dict]) -> str:
 
 
 def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult:
+    """
+    Run multi-query retrieval then call Gemini to extract structured notes.
 
+    Args:
+        store:        Populated VectorStore with all video chunks
+        video_title:  Optional title hint for the LLM
+
+    Returns:
+        Validated ExtractionResult
+
+    Raises:
+        EnvironmentError: if GEMINI_API_KEY is not set
+        ValueError:       if Gemini returns invalid JSON
+    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError(
@@ -72,6 +105,7 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
             "Then add to .env: GEMINI_API_KEY=your_key_here"
         )
 
+    # ── RAG: multi-query retrieval ────────────────────────────────────────────
     seen_texts: set[str] = set()
     all_chunks: list[dict] = []
 
@@ -90,19 +124,18 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
 
     prompt = PROMPT_TEMPLATE.format(context=context)
 
-    genai.configure(api_key=api_key)
+    # ── Gemini API call (new google.genai SDK) ────────────────────────────────
+    client = genai.Client(api_key=api_key)
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    model = genai.GenerativeModel(model_name)
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-    generation_config = genai.types.GenerationConfig(
-        temperature=0.2,        # low temp = more consistent structured output
-        max_output_tokens=2048,
-    )
-
-    response = model.generate_content(
-        prompt,
-        generation_config=generation_config,
+    response = client.models.generate_content(
+        model=model_name,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=8192,   # raised from 2048 — prevents truncated JSON
+        ),
     )
 
     raw = response.text.strip()
@@ -113,7 +146,11 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
+    # Strip trailing fence if present without leading one
+    if raw.endswith("```"):
+        raw = raw[:-3].strip()
 
+    # ── Parse + validate ──────────────────────────────────────────────────────
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:

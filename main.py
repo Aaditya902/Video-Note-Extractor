@@ -37,9 +37,10 @@ console = Console()
 
 def check_env() -> None:
     """Fail fast if API key is missing."""
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        console.print("[bold red]✗ ANTHROPIC_API_KEY not set.[/bold red]")
-        console.print("  Create a .env file from .env.example and add your key.")
+    if not os.getenv("GEMINI_API_KEY"):
+        console.print("[bold red]✗ GEMINI_API_KEY not set.[/bold red]")
+        console.print("  Get a free key at: https://aistudio.google.com")
+        console.print("  Then add to .env:  GEMINI_API_KEY=your_key_here")
         sys.exit(1)
 
 
@@ -123,7 +124,7 @@ def run(args: argparse.Namespace) -> None:
     # ── 4. LLM Extraction ────────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
         task = p.add_task("Extracting notes with Claude...", total=None)
-        from llm.claude_extractor import extract_notes
+        from llm.gemini_extractor import extract_notes
         result = extract_notes(store, video_title=video_title)
         p.update(task, description="[green]✓ Notes extracted[/green]")
 

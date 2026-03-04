@@ -1,11 +1,26 @@
+"""
+ingestion/file_loader.py — Load transcript files (.txt, .srt, .vtt).
+
+Returns a list of TranscriptSegments regardless of input format.
+"""
+
 import re
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models import TranscriptSegment
 
 
 def load_file(path: str) -> list[TranscriptSegment]:
+    """
+    Detect file type and parse into TranscriptSegments.
 
+    Supported formats:
+      .txt  — plain text, optionally with [MM:SS] timestamps
+      .srt  — SubRip subtitle format
+      .vtt  — WebVTT format (YouTube auto-captions export)
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Transcript file not found: {path}")
@@ -21,9 +36,13 @@ def load_file(path: str) -> list[TranscriptSegment]:
         return _parse_txt(text)
 
 
+# ── Format parsers ────────────────────────────────────────────────────────────
 
 def _parse_txt(text: str) -> list[TranscriptSegment]:
-
+    """
+    Parse plain text. Recognises optional [MM:SS] or [HH:MM:SS] prefixes.
+    Lines without timestamps are grouped under the last seen timestamp.
+    """
     segments: list[TranscriptSegment] = []
     timestamp_pattern = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*")
 
@@ -56,6 +75,7 @@ def _parse_txt(text: str) -> list[TranscriptSegment]:
 
 
 def _timecode_to_seconds(tc: str) -> float:
+    """Convert HH:MM:SS,mmm or HH:MM:SS.mmm to float seconds."""
     tc = tc.replace(",", ".")
     parts = tc.split(":")
     if len(parts) == 3:
@@ -68,6 +88,7 @@ def _timecode_to_seconds(tc: str) -> float:
 
 
 def _parse_srt(text: str) -> list[TranscriptSegment]:
+    """Parse SubRip (.srt) subtitle format."""
     segments: list[TranscriptSegment] = []
     # Each block: index \n timecodes \n text \n blank
     blocks = re.split(r"\n\s*\n", text.strip())
