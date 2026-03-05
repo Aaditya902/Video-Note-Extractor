@@ -1,5 +1,5 @@
 """
-llm/claude_extractor.py — Query Claude with retrieved context to extract notes.
+This code Query Claude with retrieved context to extract notes.
 
 Two-stage approach:
   1. Retrieve relevant chunks from the vector store using semantic search
@@ -11,10 +11,8 @@ Claude is instructed to return strict JSON so we can validate it with Pydantic.
 
 import json
 import os
-
 import anthropic
 from dotenv import load_dotenv
-
 
 import sys
 sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent.parent))
@@ -24,7 +22,6 @@ from processing.vector_store import VectorStore
 
 load_dotenv()
 
-# Extraction queries — we run multiple targeted queries so the retriever
 # surfaces diverse chunks (notes-focused, actions-focused, concepts-focused)
 RETRIEVAL_QUERIES = [
     "key ideas concepts explanations definitions",
@@ -78,16 +75,7 @@ def _build_context(chunks: list[dict]) -> str:
 
 
 def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult:
-    """
-    Run multi-query retrieval then call Claude to extract structured notes.
 
-    Args:
-        store:        Populated VectorStore with all video chunks
-        video_title:  Optional title hint for the LLM
-
-    Returns:
-        Validated ExtractionResult
-    """
     # Multi-query retrieval: gather chunks from all queries, deduplicate
     seen_texts: set[str] = set()
     all_chunks: list[dict] = []

@@ -1,11 +1,3 @@
-"""
-processing/vector_store.py — In-memory ChromaDB vector store.
-
-Each run gets its own ephemeral collection. We don't persist between runs
-by default (no disk I/O needed for a CLI tool), but persistence can be
-enabled by swapping to a PersistentClient.
-"""
-
 import chromadb
 from chromadb.config import Settings
 
@@ -19,11 +11,9 @@ from processing.embedder import embed_texts, embed_query
 
 class VectorStore:
     def __init__(self, collection_name: str = "transcript"):
-        # In-memory client — no files written
         self._client = chromadb.Client(
             Settings(anonymized_telemetry=False)
         )
-        # Fresh collection every run
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
             metadata={"hnsw:space": "cosine"},   # cosine similarity
@@ -48,12 +38,7 @@ class VectorStore:
         )
 
     def query(self, query_text: str, top_k: int = 8) -> list[dict]:
-        """
-        Retrieve the top_k most semantically similar chunks.
-
-        Returns:
-            List of dicts with keys: text, timestamp, start, distance
-        """
+        """Retrieve the top_k most semantically similar chunks."""
         query_embedding = embed_query(query_text)
         results = self._collection.query(
             query_embeddings=[query_embedding],
@@ -74,7 +59,6 @@ class VectorStore:
                 "distance": dist,
             })
 
-        # Sort by position in video (not by relevance score) for narrative order
         output.sort(key=lambda x: x["start"])
         return output
 

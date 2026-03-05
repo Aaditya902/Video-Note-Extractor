@@ -1,15 +1,3 @@
-"""
-processing/chunker.py — Group TranscriptSegments into overlapping Chunks.
-
-Why chunking matters for RAG:
-  - Whisper produces many small segments (~5s each). They're too small for
-    meaningful context and too many to pass to the LLM directly.
-  - We merge them into larger windows (~300 words) with overlap so that
-    no insight gets split across a boundary.
-
-Strategy: sliding window over segments by word count.
-"""
-
 import uuid
 import sys
 from pathlib import Path
@@ -23,18 +11,7 @@ def chunk_segments(
     window_words: int = 250,
     overlap_words: int = 50,
 ) -> list[Chunk]:
-    """
-    Merge TranscriptSegments into overlapping Chunks.
 
-    Args:
-        segments:      Ordered list of transcript segments
-        window_words:  Target word count per chunk
-        overlap_words: How many words to repeat at the start of next chunk
-                       (prevents context loss at boundaries)
-
-    Returns:
-        List of Chunk objects ready for embedding
-    """
     if not segments:
         return []
 

@@ -1,13 +1,3 @@
-"""
-app.py - Streamlit web UI for Video Note Extractor.
-
-Run with:
-    streamlit run app.py
-
-Key design: ALL mutable state lives in st.session_state so it survives
-Streamlit's full-script reruns that happen on every widget interaction.
-"""
-
 import os
 import sys
 import tempfile
@@ -67,8 +57,7 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background:#0A0A0F;col
 </style>"""
 
 
-# ── Session state initialiser ──────────────────────────────────────────────────
-
+# Session state initialiser
 def init_state():
     """Initialise all session_state keys on first run."""
     defaults = {
@@ -86,8 +75,6 @@ def init_state():
             st.session_state[key] = val
 
 
-# ── Status HTML ────────────────────────────────────────────────────────────────
-
 def status_html(done: list, active: str = None, err: str = None) -> str:
     h = '<div class="status-box">'
     for k, label in STEPS:
@@ -102,15 +89,11 @@ def status_html(done: list, active: str = None, err: str = None) -> str:
     return h + '</div>'
 
 
-# ── Pipeline ───────────────────────────────────────────────────────────────────
-
 def run_pipeline(itype: str, idata, wmodel: str, sbox):
     """Execute the full pipeline, updating sbox with live status."""
     done = []
     tmp  = tempfile.mkdtemp()
 
-    # Add project root to sys.path so relative imports resolve when running
-    # from any working directory
     project_root = str(Path(__file__).parent)
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
@@ -189,8 +172,6 @@ def run_pipeline(itype: str, idata, wmodel: str, sbox):
         return None, None, None, str(e)
 
 
-# ── Results renderer ───────────────────────────────────────────────────────────
-
 def render_results(result, md_path: str, json_path: str):
     md = Path(md_path).read_text(encoding="utf-8")
     js = Path(json_path).read_text(encoding="utf-8")
@@ -243,8 +224,6 @@ def render_results(result, md_path: str, json_path: str):
                            mime="application/json", use_container_width=True)
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
-
 def main():
     init_state()
 
@@ -266,7 +245,6 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # API key guard
     if not os.getenv("GEMINI_API_KEY"):
         st.error(
             "**GEMINI_API_KEY not set.**\n\n"
@@ -275,7 +253,6 @@ def main():
         )
         st.stop()
 
-    # Sidebar
     with st.sidebar:
         st.markdown("### Settings")
         wmodel = st.selectbox(
@@ -289,10 +266,8 @@ def main():
         st.markdown("**Free tier limits**")
         st.caption("Gemini: 1,500 req/day · 15/min\nWhisper: unlimited (local)\nEmbeddings: unlimited (local)")
 
-    # ── Input tabs ─────────────────────────────────────────────────────────────
-    # IMPORTANT: callbacks write to session_state so values persist through
-    # the rerun that happens when the Extract button is clicked.
-
+    
+    # Input tabs 
     t1, t2, t3 = st.tabs(["VIDEO FILE", "YOUTUBE URL", "TRANSCRIPT FILE"])
 
     with t1:
@@ -345,7 +320,7 @@ def main():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Extract button ─────────────────────────────────────────────────────────
+    # Extract button
     if st.button(
         "EXTRACT NOTES",
         disabled=not st.session_state.ready,
@@ -371,7 +346,7 @@ def main():
         st.session_state.json_path = js
         st.session_state.error     = err
 
-    # ── Render results (persists across reruns) ────────────────────────────────
+    # Render results (persists across reruns) 
     if st.session_state.result is not None:
         st.markdown("---")
         render_results(

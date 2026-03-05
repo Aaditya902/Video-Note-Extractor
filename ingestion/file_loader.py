@@ -1,9 +1,3 @@
-"""
-ingestion/file_loader.py — Load transcript files (.txt, .srt, .vtt).
-
-Returns a list of TranscriptSegments regardless of input format.
-"""
-
 import re
 from pathlib import Path
 import sys
@@ -13,14 +7,6 @@ from models import TranscriptSegment
 
 
 def load_file(path: str) -> list[TranscriptSegment]:
-    """
-    Detect file type and parse into TranscriptSegments.
-
-    Supported formats:
-      .txt  — plain text, optionally with [MM:SS] timestamps
-      .srt  — SubRip subtitle format
-      .vtt  — WebVTT format (YouTube auto-captions export)
-    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Transcript file not found: {path}")
@@ -35,8 +21,6 @@ def load_file(path: str) -> list[TranscriptSegment]:
     else:
         return _parse_txt(text)
 
-
-# ── Format parsers ────────────────────────────────────────────────────────────
 
 def _parse_txt(text: str) -> list[TranscriptSegment]:
     """
@@ -88,9 +72,7 @@ def _timecode_to_seconds(tc: str) -> float:
 
 
 def _parse_srt(text: str) -> list[TranscriptSegment]:
-    """Parse SubRip (.srt) subtitle format."""
     segments: list[TranscriptSegment] = []
-    # Each block: index \n timecodes \n text \n blank
     blocks = re.split(r"\n\s*\n", text.strip())
 
     for block in blocks:
@@ -116,7 +98,6 @@ def _parse_srt(text: str) -> list[TranscriptSegment]:
 
 
 def _parse_vtt(text: str) -> list[TranscriptSegment]:
-    """Parse WebVTT (.vtt) format."""
     segments: list[TranscriptSegment] = []
     # Strip WEBVTT header
     text = re.sub(r"^WEBVTT.*?\n\n", "", text, flags=re.DOTALL)
@@ -134,7 +115,6 @@ def _parse_vtt(text: str) -> list[TranscriptSegment]:
                 line
             )
             if not time_match:
-                # Try MM:SS.mmm format
                 time_match = re.match(
                     r"(\d{2}:\d{2}\.\d+)\s*-->\s*(\d{2}:\d{2}\.\d+)", line
                 )
@@ -142,7 +122,6 @@ def _parse_vtt(text: str) -> list[TranscriptSegment]:
                 start = _timecode_to_seconds(time_match.group(1))
                 end = _timecode_to_seconds(time_match.group(2))
                 content = " ".join(lines[i + 1:]).strip()
-                # Strip VTT tags like <c>, <00:00:01.000>
                 content = re.sub(r"<[^>]+>", "", content).strip()
                 if content:
                     segments.append(TranscriptSegment(start=start, end=end, text=content))

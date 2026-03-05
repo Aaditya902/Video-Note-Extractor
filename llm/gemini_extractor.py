@@ -1,19 +1,3 @@
-"""
-llm/gemini_extractor.py — Extract notes using Google Gemini API (free tier).
-
-Free tier limits (as of 2026):
-  - gemini-2.0-flash: 15 RPM, 1500 RPD, 1M token context — perfect for this
-  - No credit card required
-  - Get your key at: aistudio.google.com
-
-SDK: google-genai (replaces deprecated google-generativeai)
-  pip install google-genai
-
-Two-stage approach:
-  1. Multi-query retrieval from vector store (RAG)
-  2. Pass chronologically ordered chunks to Gemini -> structured JSON
-"""
-
 import json
 import os
 
@@ -30,7 +14,7 @@ from processing.vector_store import VectorStore
 
 load_dotenv()
 
-# Multiple targeted queries so retriever surfaces diverse chunks
+
 RETRIEVAL_QUERIES = [
     "key ideas concepts explanations definitions",
     "important steps process how to instructions",
@@ -83,20 +67,7 @@ def _build_context(chunks: list[dict]) -> str:
 
 
 def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult:
-    """
-    Run multi-query retrieval then call Gemini to extract structured notes.
 
-    Args:
-        store:        Populated VectorStore with all video chunks
-        video_title:  Optional title hint for the LLM
-
-    Returns:
-        Validated ExtractionResult
-
-    Raises:
-        EnvironmentError: if GEMINI_API_KEY is not set
-        ValueError:       if Gemini returns invalid JSON
-    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError(
@@ -105,7 +76,6 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
             "Then add to .env: GEMINI_API_KEY=your_key_here"
         )
 
-    # ── RAG: multi-query retrieval ────────────────────────────────────────────
     seen_texts: set[str] = set()
     all_chunks: list[dict] = []
 
@@ -115,7 +85,6 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
                 seen_texts.add(chunk["text"])
                 all_chunks.append(chunk)
 
-    # Sort by position in video for chronological narrative
     all_chunks.sort(key=lambda x: x["start"])
 
     context = _build_context(all_chunks)
@@ -124,7 +93,6 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
 
     prompt = PROMPT_TEMPLATE.format(context=context)
 
-    # ── Gemini API call (new google.genai SDK) ────────────────────────────────
     client = genai.Client(api_key=api_key)
 
     model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -140,17 +108,15 @@ def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult
 
     raw = response.text.strip()
 
-    # Defensive: strip accidental markdown fences Gemini sometimes adds
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
-    # Strip trailing fence if present without leading one
     if raw.endswith("```"):
         raw = raw[:-3].strip()
 
-    # ── Parse + validate ──────────────────────────────────────────────────────
+    # Parse + validate 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:

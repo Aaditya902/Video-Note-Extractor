@@ -1,27 +1,9 @@
-"""
-ingestion/local_video.py — Extract audio from local video files using FFmpeg.
-
-Supports: .mp4, .mkv, .mov, .avi, .webm, .m4v, .flv
-FFmpeg is used directly (subprocess) — no Python wrapper needed.
-
-Design decisions:
-  - Extract to .wav (not .mp3) — Whisper prefers 16kHz mono WAV,
-    skipping the mp3 encode/decode cycle improves transcription accuracy.
-  - 16kHz mono is all Whisper needs; stereo/48kHz wastes disk and RAM.
-  - We probe the file first (ffprobe) to validate it and pull metadata
-    before committing to a potentially long extraction.
-  - Output filename mirrors the source stem so it's traceable.
-"""
-
 import json
 import re
 import subprocess
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-
-
-# ── Types ─────────────────────────────────────────────────────────────────────
 
 @dataclass
 class VideoMetadata:
@@ -36,19 +18,7 @@ class VideoMetadata:
 SUPPORTED_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".flv"}
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
 def _resolve_binary(name: str) -> str:
-    """
-    Resolve ffmpeg or ffprobe to an absolute path.
-
-    Search order:
-      1. FFMPEG_PATH env var (directory)
-      2. shutil.which() — standard PATH lookup
-      3. Common hard-coded fallbacks (Linux/macOS/Windows)
-
-    Raises EnvironmentError if not found.
-    """
     env_dir = os.environ.get("FFMPEG_PATH", "")
     if env_dir:
         candidate = Path(env_dir) / name
@@ -82,23 +52,15 @@ def _resolve_binary(name: str) -> str:
 
 
 def _require_ffmpeg() -> None:
-    """Validate ffmpeg and ffprobe are locatable before starting."""
     _resolve_binary("ffmpeg")
     _resolve_binary("ffprobe")
 
 
 def _sanitize(name: str) -> str:
-    """Strip characters unsafe in filenames."""
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip()[:80]
 
 
 def probe_video(path: str) -> VideoMetadata:
-    """
-    Run ffprobe to extract metadata from the video file.
-
-    Returns VideoMetadata.
-    Raises ValueError if the file has no audio stream.
-    """
     cmd = [
         _resolve_binary("ffprobe"),
         "-v", "quiet",
@@ -140,37 +102,18 @@ def probe_video(path: str) -> VideoMetadata:
 
 
 def _format_duration(seconds: float) -> str:
-    """Format seconds into HH:MM:SS for display."""
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
-
 def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, VideoMetadata]:
-    """
-    Extract audio from a local video file and save as 16kHz mono WAV.
 
-    Args:
-        video_path: Absolute or relative path to the video file
-        output_dir: Directory to write the extracted audio file
-
-    Returns:
-        (audio_file_path, VideoMetadata)
-
-    Raises:
-        FileNotFoundError: if the video file doesn't exist
-        ValueError:        if the file has no audio stream or ffprobe fails
-        EnvironmentError:  if ffmpeg/ffprobe are not installed
-        RuntimeError:      if ffmpeg extraction fails
-    """
     _require_ffmpeg()
 
     p = Path(video_path).resolve()
 
-    # ── Validate input ────────────────────────────────────────────────────────
     if not p.exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
 
@@ -180,7 +123,6 @@ def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, Video
             f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
 
-    # ── Probe for metadata ────────────────────────────────────────────────────
     meta = probe_video(str(p))
 
     if not meta.has_audio:
@@ -188,21 +130,12 @@ def extract_audio(video_path: str, output_dir: str = "data") -> tuple[str, Video
             f"'{p.name}' has no audio stream. Cannot transcribe a silent video."
         )
 
-    # ── Build output path ─────────────────────────────────────────────────────
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     audio_path = Path(output_dir) / f"{meta.title}_audio.wav"
 
-    # Skip re-extraction if output already exists (idempotent for reruns)
     if audio_path.exists():
         return str(audio_path), meta
 
-    # ── Run FFmpeg extraction ─────────────────────────────────────────────────
-    # Flags explained:
-    #   -vn          : drop video stream
-    #   -acodec pcm_s16le : uncompressed 16-bit PCM (what Whisper wants)
-    #   -ar 16000    : resample to 16kHz (Whisper's native sample rate)
-    #   -ac 1        : downmix to mono (halves file size, sufficient for speech)
-    #   -y           : overwrite without prompt
     cmd = [
         _resolve_binary("ffmpeg"),
         "-i", str(p),

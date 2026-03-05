@@ -1,7 +1,3 @@
-"""
-output/formatter.py — Render ExtractionResult to Markdown and JSON files.
-"""
-
 import json
 from pathlib import Path
 from datetime import datetime
@@ -19,12 +15,7 @@ def _slug(title: str) -> str:
 
 
 def save_markdown(result: ExtractionResult, output_dir: str = "data") -> str:
-    """
-    Write the extraction result as a clean Markdown file.
 
-    Returns:
-        Path to the written file
-    """
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     slug = _slug(result.title)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -55,12 +46,7 @@ def save_markdown(result: ExtractionResult, output_dir: str = "data") -> str:
 
 
 def save_json(result: ExtractionResult, output_dir: str = "data") -> str:
-    """
-    Write the extraction result as JSON.
 
-    Returns:
-        Path to the written file
-    """
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     slug = _slug(result.title)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
