@@ -35,7 +35,7 @@ Input (YouTube URL or .txt/.srt/.vtt file)
 
 ```bash
 # 1. Clone and enter
-git clone <repo> && cd video-note-extractor
+git clone https://github.com/Aaditya902/Video-Note-Extractor.git  && cd video-note-extractor
 
 # 2. Create virtual environment
 python3 -m venv venv && source venv/bin/activate
