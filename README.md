@@ -110,7 +110,6 @@ video-note-extractor/
 | medium| 769M | Slow  | Great |
 | large | 1.5G | Slow  | Best |
 
-## Roadmap
 
 - [ ] Streamlit web UI
 - [ ] Batch processing (multiple videos)
