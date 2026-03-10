@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 # 4. Configure
 cp .env.example .env
-# Edit .env — add your GEMINI_API_KEY
+# Edit .env, add your GEMINI_API_KEY
 
 # 5. Run
 python main.py --file lecture.srt
@@ -110,9 +110,3 @@ video-note-extractor/
 | medium| 769M | Slow  | Great |
 | large | 1.5G | Slow  | Best |
 
-
-- [ ] Streamlit web UI
-- [ ] Batch processing (multiple videos)
-- [ ] Export to Notion / Obsidian
-- [ ] Support for local video files (.mp4)
-- [ ] Persistent ChromaDB for cross-session search
