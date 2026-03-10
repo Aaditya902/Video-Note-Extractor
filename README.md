@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 # 4. Configure
 cp .env.example .env
-# Edit .env — add your ANTHROPIC_API_KEY
+# Edit .env — add your GEMINI_API_KEY
 
 # 5. Run
 python main.py --file lecture.srt
