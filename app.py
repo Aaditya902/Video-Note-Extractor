@@ -2,7 +2,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-
+from google import genai
+from google.genai import types
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -53,18 +54,29 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background:#0A0A0F;col
 .concept-tag{display:inline-block;padding:3px 12px;border-radius:4px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:3px}
 .stDownloadButton>button{background:transparent!important;border:1px solid #1E1E2E!important;border-radius:6px!important;color:#666!important;font-family:'Space Mono',monospace!important;font-size:11px!important}
 .stDownloadButton>button:hover{border-color:#00FFB244!important;color:#00FFB2!important}
+.chat-wrap{margin-top:0.5rem}
+.chat-msg{display:flex;gap:10px;margin-bottom:14px;align-items:flex-start}
+.chat-msg.user{flex-direction:row-reverse}
+.chat-avatar{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-family:'Space Mono',monospace;font-weight:700}
+.chat-avatar.user{background:#00FFB215;border:1px solid #00FFB244;color:#00FFB2}
+.chat-avatar.bot{background:#7C6FFF15;border:1px solid #7C6FFF44;color:#7C6FFF}
+.chat-bubble{padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.65;max-width:80%}
+.chat-bubble.user{background:#00FFB210;border:1px solid #00FFB233;color:#E0E0F0;border-radius:10px 2px 10px 10px}
+.chat-bubble.bot{background:#12121A;border:1px solid #1E1E2E;color:#A0A0C0;border-radius:2px 10px 10px 10px}
 </style>"""
 
 
 def init_state():
     """Initialise all session_state keys on first run."""
     defaults = {
-        "input_type":  None,   # "video" | "youtube" | "file"
-        "input_data":  None,   # path str | url str | (fname, bytes)
-        "ready":       False,
-        "running":     False,
-        "result":      None,
-        "error":       None,
+        "input_type":    None,
+        "input_data":    None,
+        "ready":         False,
+        "running":       False,
+        "result":        None,
+        "store":         None,   # VectorStore kept in memory for Q&A
+        "chat_history":  [],     # list of {"role": "user"|"assistant", "text": str}
+        "error":         None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -85,13 +97,11 @@ def status_html(done: list, active: str = None, err: str = None) -> str:
     return h + '</div>'
 
 
-
 def run_pipeline(itype: str, idata, wmodel: str, sbox):
     """Execute the full pipeline, updating sbox with live status."""
     done = []
     tmp  = tempfile.mkdtemp()
 
-    # Add project root to sys.path so relative imports resolve when running
     # from any working directory
     project_root = str(Path(__file__).parent)
     if project_root not in sys.path:
@@ -154,14 +164,97 @@ def run_pipeline(itype: str, idata, wmodel: str, sbox):
         done.append("llm")
         upd()
 
-        return result, None
+        return result, store, None
 
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
-        print(f"\n[Pipeline ERROR]\n{tb}")   # always print to terminal
+        print(f"\n[Pipeline ERROR]\n{tb}")
         upd(active=None, err=str(e))
-        return None, str(e)
+        return None, None, str(e)
+
+
+def answer_question(question: str, store, chat_history: list) -> str:
+
+    # Retrieve relevant chunks from this session's store
+    chunks = store.query(question, top_k=6)
+    if not chunks:
+        return "I couldn't find relevant information in the extracted notes to answer that."
+
+    context = "\n\n".join(
+        f"{c.get('timestamp', '')} {c['text']}".strip()
+        for c in chunks
+    )
+
+    # Build conversation history string
+    history_str = ""
+    if chat_history:
+        lines = []
+        for msg in chat_history[-6:]:   # last 3 turns (6 messages)
+            role = "User" if msg["role"] == "user" else "Assistant"
+            lines.append(f"{role}: {msg['text']}")
+        history_str = "\n".join(lines) + "\n\n"
+
+    prompt = f"""You are a helpful assistant that answers questions ONLY based on the provided video transcript excerpts below.
+If the answer is not found in the excerpts, say "I don't have enough information in the extracted notes to answer that."
+Do not use any outside knowledge. Be concise and direct.
+
+Transcript excerpts:
+{context}
+
+{history_str}User: {question}
+Assistant:"""
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    client  = genai.Client(api_key=api_key)
+    model   = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.3,
+            max_output_tokens=1024,
+        ),
+    )
+    return response.text.strip()
+
+
+def render_chat():
+    """Render the Q&A chat section below the extracted notes."""
+    st.markdown('<div class="sec-label">Ask About These Notes</div>', unsafe_allow_html=True)
+    st.caption("Questions are answered strictly from the extracted content — no outside knowledge.")
+
+    # Render existing messages
+    if st.session_state.chat_history:
+        st.markdown('<div class="chat-wrap">', unsafe_allow_html=True)
+        for msg in st.session_state.chat_history:
+            role  = msg["role"]
+            text  = msg["text"]
+            avatar = "you" if role == "user" else "ai"
+            st.markdown(
+                f'<div class="chat-msg {role}">'
+                f'<div class="chat-avatar {role if role == "user" else "bot"}">'
+                f'{"Y" if role == "user" else "AI"}</div>'
+                f'<div class="chat-bubble {"user" if role == "user" else "bot"}">{text}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Input box
+    question = st.chat_input("Ask a question about the video...")
+    if question:
+        st.session_state.chat_history.append({"role": "user", "text": question})
+        with st.spinner("Thinking..."):
+            answer = answer_question(
+                question,
+                st.session_state.store,
+                st.session_state.chat_history[:-1],  # history before this question
+            )
+        st.session_state.chat_history.append({"role": "assistant", "text": answer})
+        st.rerun()
+
 
 
 def render_results(result):
@@ -244,7 +337,6 @@ def main():
 
     st.markdown(_CSS, unsafe_allow_html=True)
 
-    # Header
     st.markdown(
         '<div style="display:flex;align-items:center;gap:14px;margin-bottom:2rem;'
         'padding-bottom:1.5rem;border-bottom:1px solid #1E1E2E">'
@@ -268,7 +360,6 @@ def main():
         )
         st.stop()
 
-    # Sidebar
     with st.sidebar:
         st.markdown("### Settings")
         wmodel = st.selectbox(
@@ -340,25 +431,30 @@ def main():
         disabled=not st.session_state.ready,
         use_container_width=True,
     ):
-        st.session_state.result    = None
-        st.session_state.error     = None
-        st.session_state.running   = True
+        st.session_state.result       = None
+        st.session_state.store        = None
+        st.session_state.chat_history = []     # reset chat on new extraction
+        st.session_state.error        = None
+        st.session_state.running      = True
 
         sbox = st.empty()
-        result, err = run_pipeline(
+        result, store, err = run_pipeline(
             st.session_state.input_type,
             st.session_state.input_data,
             wmodel,
             sbox,
         )
 
-        st.session_state.running   = False
-        st.session_state.result    = result
-        st.session_state.error     = err
+        st.session_state.running = False
+        st.session_state.result  = result
+        st.session_state.store   = store
+        st.session_state.error   = err
 
     if st.session_state.result is not None:
         st.markdown("---")
         render_results(st.session_state.result)
+        st.markdown("---")
+        render_chat()
 
 
 if __name__ == "__main__":
