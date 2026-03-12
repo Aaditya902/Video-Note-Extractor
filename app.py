@@ -207,7 +207,7 @@ Assistant:"""
 
     api_key = os.getenv("GEMINI_API_KEY")
     client  = genai.Client(api_key=api_key)
-    model   = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model   = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     response = client.models.generate_content(
         model=model,
