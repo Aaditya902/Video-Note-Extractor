@@ -1,18 +1,9 @@
 import json
-import os
 
-from google import genai
-from google.genai import types
-from dotenv import load_dotenv
-
-import sys
-from pathlib import Path as _root_path
-sys.path.insert(0, str(_root_path(__file__).resolve().parent.parent))
 
 from models import ExtractionResult, Note
 from processing.vector_store import VectorStore
-
-load_dotenv()
+from llm.gemini_client import generate
 
 
 RETRIEVAL_QUERIES = [
@@ -23,7 +14,7 @@ RETRIEVAL_QUERIES = [
     "conclusions summary takeaways results",
 ]
 
-PROMPT_TEMPLATE = """You are an expert note-taking assistant. You receive segments of a video transcript and must extract structured, high-quality notes.
+_EXTRACTION_PROMPT = """You are an expert note-taking assistant. You receive segments of a video transcript and must extract structured, high-quality notes.
 Be concise but complete. Every note should stand alone as a useful piece of information.
 Respond ONLY with valid JSON — no markdown fences, no preamble, no explanation. Do not truncate.
 
@@ -56,79 +47,59 @@ Rules:
 - Timestamps should match the [MM:SS] markers in the context
 - You MUST produce complete, valid JSON — never stop mid-string"""
 
-
-def _build_context(chunks: list[dict]) -> str:
-    """Format retrieved chunks into a readable context block for the LLM."""
-    lines = []
-    for chunk in chunks:
-        ts = chunk.get("timestamp", "")
-        lines.append(f"{ts} {chunk['text']}")
-    return "\n\n".join(lines)
-
-
-def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult:
-
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "GEMINI_API_KEY not set.\n"
-            "Get a free key at: https://aistudio.google.com\n"
-            "Then add to .env: GEMINI_API_KEY=your_key_here"
-        )
-
-    seen_texts: set[str] = set()
-    all_chunks: list[dict] = []
+def _retrieve_chunks(store: VectorStore) -> list[dict]:
+    seen: set[str] = set()
+    chunks: list[dict] = []
 
     for query in RETRIEVAL_QUERIES:
-        for chunk in store.query(query, top_k=6):
-            if chunk["text"] not in seen_texts:
-                seen_texts.add(chunk["text"])
-                all_chunks.append(chunk)
+        for chunk in store.query(query, top_k = 6):
+            if chunk["text"] not in seen:
+                seen.add(chunk["text"])
+                chunks.append(chunk)
 
-    all_chunks.sort(key=lambda x: x["start"])
+    chunks.sort(key = lambda c: c["start"])
+    return chunks
 
-    context = _build_context(all_chunks)
-    if video_title:
-        context = f"Video title: {video_title}\n\n" + context
+ 
+def _build_context(chunks: list[dict], video_title: str = "") -> str:
 
-    prompt = PROMPT_TEMPLATE.format(context=context)
+    lines = [f"{c.get('timestamp', '')} {c['text']}".strip() for c in chunks]
+    context = "\n\n".join(lines)
+    return f"Video title: {video_title}\n\n{context}" if video_title else context
 
-    client = genai.Client(api_key=api_key)
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.2,
-            max_output_tokens=8192,   # raised from 2048 — prevents truncated JSON
-        ),
-    )
-
-    raw = response.text.strip()
-
+def _parse_response(raw: str, fallback_title: str) -> ExtractionResult:
+    """Strip markdown fences if present, parse JSON, validate with Pydantic."""
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
+        parts = raw.split("```")
+        raw = parts[1]
         if raw.startswith("json"):
             raw = raw[4:]
-        raw = raw.strip()
     if raw.endswith("```"):
-        raw = raw[:-3].strip()
-
-    # Parse + validate 
+        raw = raw[:-3]
+    raw = raw.strip()
+ 
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError as exc:
         raise ValueError(
-            f"Gemini returned invalid JSON.\nError: {e}\nRaw response:\n{raw[:500]}"
-        )
-
-    result = ExtractionResult(
-        title=data.get("title", video_title or "Untitled"),
+            f"Gemini returned invalid JSON.\nError: {exc}\n"
+            f"Response (first 500 chars):\n{raw[:500]}"
+        ) from exc
+ 
+    return ExtractionResult(
+        title=data.get("title", fallback_title or "Untitled"),
         summary=data.get("summary", ""),
         notes=[Note(**n) for n in data.get("notes", [])],
         action_items=data.get("action_items", []),
         key_concepts=data.get("key_concepts", []),
     )
-    return result
+
+
+def extract_notes(store: VectorStore, video_title: str = "") -> ExtractionResult:
+
+    chunks  = _retrieve_chunks(store)
+    context = _build_context(chunks, video_title)
+    prompt  = _EXTRACTION_PROMPT.format(context=context)
+    raw     = generate(prompt, temperature=0.2, max_output_tokens=8192)
+    return _parse_response(raw, fallback_title=video_title)

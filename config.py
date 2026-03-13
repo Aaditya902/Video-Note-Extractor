@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
+ 
 def get_gemini_api_key() -> str:
     """Return Gemini API key, raising clearly if not set."""
     key = os.getenv("GEMINI_API_KEY", "")
