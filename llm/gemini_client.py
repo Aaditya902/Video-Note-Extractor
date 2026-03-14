@@ -1,9 +1,16 @@
-from functools import lru_cache
+import sys
+from pathlib import Path
+ 
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
+from functools import lru_cache
 from google import genai
 from google.genai import types
 
 from config import get_gemini_api_key, get_gemini_model
+
 
 
 @lru_cache(maxsize = 1)

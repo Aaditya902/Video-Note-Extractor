@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "video-note-extractor"
+version = "1.0.0"
+requires-python = ">=3.10"
+description = "AI-powered video note extraction using RAG + Gemini"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ingestion*", "transcription*", "processing*", "llm*", "output*"]
+
+# Install in editable mode so all imports resolve from project root:
+#   pip install -e .
+# After this, all modules use clean absolute imports with no sys.path hacks.

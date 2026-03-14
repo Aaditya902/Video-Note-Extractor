@@ -1,66 +1,72 @@
+import sys
+from pathlib import Path
+ 
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 import chromadb
 from chromadb.config import Settings
-
-import sys
-from pathlib import Path as _root_path
-sys.path.insert(0, str(_root_path(__file__).resolve().parent.parent))
-
 from models import Chunk
 from processing.embedder import embed_texts, embed_query
 
 
+
 class VectorStore:
-    def __init__(self, collection_name: str = "transcript"):
+    def __init__(self, collection_name: str = "transcript") -> None:
         self._client = chromadb.Client(
             Settings(anonymized_telemetry=False)
         )
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
-            metadata={"hnsw:space": "cosine"},   # cosine similarity
+            metadata={"hnsw:space": "cosine"},
         )
 
     def add_chunks(self, chunks: list[Chunk]) -> None:
-        """Embed and store all chunks in the collection."""
         if not chunks:
             return
 
-        texts = [c.text for c in chunks]
+        texts      = [c.text for c in chunks]
         embeddings = embed_texts(texts)
 
         self._collection.add(
-            ids=[c.chunk_id for c in chunks],
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=[
+            ids        = [c.chunk_id for c in chunks],
+            embeddings = embeddings,
+            documents  = texts,
+            metadatas  = [
                 {"timestamp": c.timestamp_str, "start": c.start}
                 for c in chunks
             ],
         )
 
     def query(self, query_text: str, top_k: int = 8) -> list[dict]:
-        """Retrieve the top_k most semantically similar chunks."""
-        query_embedding = embed_query(query_text)
+
+        n = min(top_k, self._collection.count())
+        if n == 0:
+            return []
+
         results = self._collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(top_k, self._collection.count()),
-            include=["documents", "metadatas", "distances"],
+            query_embeddings = [embed_query(query_text)],
+            n_results        = n,
+            include          = ["documents", "metadatas", "distances"],
         )
 
-        output = []
-        docs = results["documents"][0]
-        metas = results["metadatas"][0]
-        dists = results["distances"][0]
-
-        for doc, meta, dist in zip(docs, metas, dists):
-            output.append({
-                "text": doc,
+        chunks = [
+            {
+                "text":      doc,
                 "timestamp": meta.get("timestamp", ""),
-                "start": meta.get("start", 0.0),
-                "distance": dist,
-            })
+                "start":     meta.get("start", 0.0),
+                "distance":  dist,
+            }
+            for doc, meta, dist in zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0],
+            )
+        ]
 
-        output.sort(key=lambda x: x["start"])
-        return output
+        chunks.sort(key=lambda c: c["start"])
+        return chunks
 
     def count(self) -> int:
         return self._collection.count()

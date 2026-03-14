@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+ 
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 import json
 import re
 import subprocess
@@ -5,6 +12,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+    
 @dataclass
 class VideoMetadata:
     title: str          # filename stem (no extension)

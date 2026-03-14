@@ -1,5 +1,13 @@
+import sys
+from pathlib import Path
+ 
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 from processing.vector_store import VectorStore
 from llm.gemini_client import generate
+
 
 QA_PROMPT = (
     "You are a helpful assistant that answers questions ONLY using the video "
