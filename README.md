@@ -1,112 +1,195 @@
-# 🎬 Video Note Extractor
+# 🎬 NoteExtract.ai — AI-Powered Video Note Extractor
 
-> Convert YouTube videos, lectures, and meetings into **organized notes**, **timestamps**, and **action items** using local Whisper + RAG + Claude.
+> Convert videos, YouTube links, and transcript files into structured, timestamped notes using a fully local RAG pipeline — with Google Gemini as the only external dependency.
+
 
 ---
 
-## Architecture
+## ✨ What It Does
 
-```
-Input (YouTube URL or .txt/.srt/.vtt file)
-    │
-    ▼
-[Ingestion]        yt-dlp downloads audio  OR  file_loader parses transcript
-    │
-    ▼
-[Transcription]    Whisper (local) → List[TranscriptSegment{start, end, text}]
-    │              (skipped if transcript file provided)
-    ▼
-[Chunker]          Sliding window (250 words, 50 overlap) → List[Chunk]
-    │
-    ▼
-[Embedder]         sentence-transformers all-MiniLM-L6-v2 → embeddings
-    │
-    ▼
-[ChromaDB]         In-memory vector store, cosine similarity
-    │
-    ▼  (multi-query RAG retrieval)
-[Claude]           claude-sonnet → structured JSON notes
-    │
-    ▼
-[Output]           notes.md  +  notes.json  →  saved to ./data/
-```
+Feed it a video file, a YouTube URL, or a transcript — and get back:
 
-## Setup
+- 📝 **Timestamped notes** with headings and key insights
+- 📌 **Executive summary** of the full content
+- ✅ **Action items** extracted automatically
+- 🏷️ **Key concepts / tags** for quick scanning
+- 💬 **Q&A chat** grounded strictly in the extracted notes
+- 📥 **Export** as Markdown or JSON — one click, no sign-up
+
+---
+
+
+### Prerequisites
+
+| Tool | Purpose | Install |
+|---|---|---|
+| Python 3.10+ | Runtime | [python.org](https://python.org) |
+| FFmpeg | Video/audio processing | See below |
+| Gemini API Key | LLM extraction | [aistudio.google.com](https://aistudio.google.com) — free |
+
+**Install FFmpeg:**
 
 ```bash
-# 1. Clone and enter
-git clone https://github.com/Aaditya902/Video-Note-Extractor.git  && cd video-note-extractor
+# macOS
+brew install ffmpeg
 
-# 2. Create virtual environment
-python3 -m venv venv && source venv/bin/activate
+# Ubuntu / Debian
+sudo apt install ffmpeg
+
+# Windows — download from https://www.gyan.dev/ffmpeg/builds/
+# and add the bin/ folder to your system PATH
+```
+
+### Installation
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Aaditya902/Video-Note-Extractor
+cd video-note-extractor
+
+# 2. Create and activate a virtual environment
+python -m venv myenv
+source myenv/bin/activate        # macOS / Linux
+myenv\Scripts\activate           # Windows
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure
+# 4. Configure environment
 cp .env.example .env
-# Edit .env, add your GEMINI_API_KEY
-
-# 5. Run
-python main.py --file lecture.srt
-python main.py --url "https://youtube.com/watch?v=..."
+# Open .env and set: GEMINI_API_KEY=your_key_here
 ```
 
-## Usage
+### Run
 
 ```bash
-# From a transcript file
-python main.py --file path/to/lecture.srt
-
-# From YouTube
-python main.py --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-
-# Use a more accurate Whisper model (slower)
-python main.py --url "..." --whisper-model small
-
-# Custom output directory
-python main.py --file transcript.txt --output ./my_notes
+streamlit run app.py
 ```
 
-## Supported Input Formats
+Open **http://localhost:8501** in your browser.
 
-| Format | Extension | Notes |
-|--------|-----------|-------|
-| Plain text | `.txt` | Optional `[MM:SS]` timestamps |
-| SubRip subtitles | `.srt` | Standard subtitle format |
-| WebVTT captions | `.vtt` | YouTube auto-caption export |
-| YouTube URL | `--url` | Requires `ffmpeg` for audio extraction |
+---
 
-## Project Structure
+## 🗂️ Input Modes
+
+| Mode | Formats | How |
+|---|---|---|
+| **Local Video** | `.mp4` `.mkv` `.mov` `.avi` `.webm` `.m4v` `.flv` | Drag & drop upload |
+| **YouTube URL** | Any public YouTube video | Paste URL |
+| **Transcript File** | `.srt` `.vtt` `.txt` | Drag & drop upload |
+
+---
+
+## 🏗️ Architecture
+
+```
+Input (video / YouTube / transcript)
+         │
+         ▼
+   ┌─────────────┐
+   │  Ingestion  │  FFmpeg · yt-dlp · file parser
+   └──────┬──────┘
+          │
+          ▼
+   ┌──────────────────┐
+   │  Transcription   │  OpenAI Whisper  (fully local, offline)
+   └──────┬───────────┘
+          │
+          ▼
+   ┌────────────┐
+   │  Chunking  │  Sliding window — 250 words, 50-word overlap
+   └──────┬─────┘
+          │
+          ▼
+   ┌───────────────┐
+   │  Embedding    │  all-MiniLM-L6-v2  (fully local, offline)
+   └──────┬────────┘
+          │
+          ▼
+   ┌────────────────────┐
+   │  ChromaDB          │  In-memory vector store
+   │  (Vector Store)    │
+   └──────┬─────────────┘
+          │
+          ├──── Multi-query RAG retrieval ──► Gemini ──► Structured Notes
+          │          (5 targeted queries,
+          │           dedup + chronological sort)
+          │
+          └──── Q&A retrieval ──► Gemini ──► Grounded answers
+```
+
+---
+
+## 📁 Project Structure
 
 ```
 video-note-extractor/
-├── main.py                   # CLI entry point
-├── models.py                 # Shared data models (Pydantic + dataclasses)
+│
+├── app.py                        # Streamlit UI — pure presentation layer
+├── pipeline.py                   # Pipeline orchestration (ingest → extract)
+├── config.py                     # All env config — single source of truth
+├── models.py                     # Shared Pydantic + dataclass types
+├── pyproject.toml                # Package config — clean absolute imports
+│
+├── ingestion/
+│   ├── local_video.py            # FFmpeg audio extraction
+│   ├── youtube.py                # yt-dlp YouTube download
+│   └── file_loader.py            # .txt / .srt / .vtt parser
+│
+├── transcription/
+│   └── whisper_engine.py         # Local Whisper STT
+│
+├── processing/
+│   ├── chunker.py                # Sliding-window transcript chunker
+│   ├── embedder.py               # SentenceTransformers embeddings
+│   └── vector_store.py           # ChromaDB in-memory vector store
+│
+├── llm/
+│   ├── gemini_client.py          # Shared Gemini client factory (DRY)
+│   ├── gemini_extractor.py       # RAG + Gemini note extraction
+│   └── qa_engine.py              # Grounded Q&A engine
+│
 ├── requirements.txt
 ├── .env.example
-├── ingestion/
-│   ├── youtube.py            # yt-dlp audio download
-│   └── file_loader.py        # .txt / .srt / .vtt parser
-├── transcription/
-│   └── whisper_engine.py     # Whisper speech-to-text
-├── processing/
-│   ├── chunker.py            # Sliding window chunker
-│   ├── embedder.py           # sentence-transformers
-│   └── vector_store.py       # ChromaDB wrapper
-├── llm/
-│   └── claude_extractor.py   # Multi-query RAG + Claude
-└── output/
-    └── formatter.py          # Markdown + JSON writer
+└── README.md
 ```
 
-## Whisper Model Guide
 
-| Model | Size | Speed | Accuracy |
-|-------|------|-------|----------|
-| tiny  | 39M  | Fast  | Basic |
-| base  | 74M  | Good  | Good ← **default** |
-| small | 244M | Slower| Better |
-| medium| 769M | Slow  | Great |
-| large | 1.5G | Slow  | Best |
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GEMINI_API_KEY` | ✅ Yes | — | Free key from [aistudio.google.com](https://aistudio.google.com) |
+| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Gemini model to use |
+| `WHISPER_MODEL` | No | `base` | `tiny` / `base` / `small` / `medium` / `large` |
+| `FFMPEG_PATH` | No | auto-detected | Path to FFmpeg `bin/` directory |
+
+---
+
+
+## 💸 Free Tier Limits
+
+This project was built to run entirely for free:
+
+| Service | Cost | Limit |
+|---|---|---|
+| **Gemini API** | Free | 1,500 req/day · 15 req/min |
+| **Whisper** | Free | Unlimited — runs locally |
+| **Embeddings** | Free | Unlimited — runs locally |
+| **ChromaDB** | Free | Unlimited — in-memory |
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| UI | Streamlit |
+| Pipeline orchestration | Python (custom) |
+| Speech-to-text | OpenAI Whisper (local) |
+| Embeddings | SentenceTransformers — `all-MiniLM-L6-v2` (local) |
+| Vector store | ChromaDB (in-memory) |
+| LLM | Google Gemini 2.0 Flash (API) |
+| Video download | yt-dlp |
+| Audio extraction | FFmpeg |
+| Data validation | Pydantic v2 |
 
