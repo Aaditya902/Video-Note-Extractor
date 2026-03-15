@@ -1,46 +1,35 @@
-# ─────────────────────────────────────────────
-# Video Note Extractor — Python dependencies
+# Video Note Extractor - Python dependencies
 # Python 3.10+ required
-# Install: pip install -r requirements.txt
-# ─────────────────────────────────────────────
+#
+# Works on:
+#   Local machine    : full pipeline (Whisper + FFmpeg + Gemini)
+#   Streamlit Cloud  : Gemini-only pipeline (no Whisper/torch)
 
-# ── Web UI ────────────────────────────────────
-streamlit>=1.32.0           # Browser-based UI (run: streamlit run app.py)
+streamlit>=1.32.0
 
-# ── LLM (FREE — no credit card needed) ───────
-google-genai>=1.0.0         # Gemini API — free at aistudio.google.com
-                             # Free tier: 1500 req/day, 1M token context
-                             # (replaces deprecated google-generativeai)
+# ── LLM — Google Gemini (free tier, no credit card) 
+# Free: 1,500 req/day · 15/min · 1M token context
+# Key:  https://aistudio.google.com
+google-genai>=1.0.0
 
-# ── Core ──────────────────────────────────────
-python-dotenv>=1.0.0        # Load .env for API keys
+python-dotenv>=1.0.0
 
-# ── Ingestion: YouTube ────────────────────────
-yt-dlp>=2024.1.0            # YouTube audio download
-# NOTE: also requires ffmpeg installed on your system (NOT a pip package)
-# macOS:  brew install ffmpeg
-# Ubuntu: sudo apt install ffmpeg
-# Windows: https://www.gyan.dev/ffmpeg/builds/
+# Also requires ffmpeg on system PATH
+# Streamlit Cloud: installed via packages.txt
+# Local:  brew install ffmpeg  /  sudo apt install ffmpeg
+yt-dlp>=2024.1.0
 
-# ── Ingestion: Local video (.mp4 / .mkv etc.) ─
-# No pip package needed — uses ffmpeg via subprocess (must be on PATH)
+sentence-transformers>=2.7.0   # Local embeddings (~80MB one-time download)
+chromadb>=0.4.0                # In-memory vector store
 
-# ── Transcription (FREE — runs fully offline) ─
-openai-whisper>=20231117    # Local speech-to-text, no API key needed
-torch>=2.0.0                # Required by Whisper
-# For faster GPU transcription, install torch with CUDA instead:
-# pip install torch --index-url https://download.pytorch.org/whl/cu118
+pydantic>=2.0.0
 
-# ── RAG Pipeline (FREE — runs fully offline) ──
-sentence-transformers>=2.7.0  # Local embeddings, ~80MB one-time download
-chromadb>=0.4.0               # In-memory vector store
-
-# ── Data validation ───────────────────────────
-pydantic>=2.0.0             # Typed models, validates LLM JSON output
-
-# ── CLI output ────────────────────────────────
-rich>=13.0.0                # Colored terminal output, spinners, tables
-
-# ── Transitive deps ───────────────────────────
 numpy>=1.24.0
 tqdm>=4.65.0
+rich>=13.0.0
+
+# Streamlit Cloud uses Gemini Audio instead (see transcription/whisper_engine.py)
+# Uncomment below for local use with offline Whisper transcription:
+#
+# openai-whisper>=20231117
+# torch>=2.0.0
