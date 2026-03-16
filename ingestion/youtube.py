@@ -1,120 +1,143 @@
 import sys
 from pathlib import Path
- 
-_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import os
 import re
 import shutil
-from pathlib import Path
+
 import yt_dlp
 
-from config import get_ffmpeg_path
+from config import get_ffmpeg_path, is_cloud
 
 
-    
-
-def _sanitize_filename(name: str) -> str:
-    """Strip characters unsafe in filenames."""
+def _sanitize(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip()[:80]
 
 
 def _find_ffmpeg_dir() -> str:
-
     env_val = get_ffmpeg_path()
     if env_val:
         p = Path(env_val)
         if p.is_file():
             return str(p.parent)
-        if p.is_dir() and (p / "ffmpeg").exists():
+        if p.is_dir():
             return str(p)
-        # Windows, check for ffmpeg.exe
-        if p.is_dir() and (p / "ffmpeg.exe").exists():
-            return str(p)
-
     binary = shutil.which("ffmpeg")
     if binary:
         return str(Path(binary).parent)
-
-    for d in ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/opt/local/bin"]:
+    for d in ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
         if Path(d, "ffmpeg").exists():
             return d
-
     raise EnvironmentError(
         "ffmpeg not found.\n"
         "  macOS:   brew install ffmpeg\n"
         "  Ubuntu:  sudo apt install ffmpeg\n"
-        "  Windows: https://www.gyan.dev/ffmpeg/builds/\n"
-        "Or set FFMPEG_PATH=/path/to/ffmpeg/dir in your .env file."
+        "  Docker/HF: add 'ffmpeg' to packages.txt"
     )
 
 
 def _find_node() -> str | None:
-
     for name in ("node", "nodejs"):
         found = shutil.which(name)
         if found:
             return found
-    for path in ("/usr/bin/node", "/usr/local/bin/node", "/opt/homebrew/bin/node"):
-        if Path(path).exists():
-            return path
+    for p in ("/usr/bin/node", "/usr/local/bin/node", "/opt/homebrew/bin/node"):
+        if Path(p).exists():
+            return p
     return None
 
 
-def _build_extractor_args() -> dict:
-    node = _find_node()
-    if node:
-        return {"youtube": {"js_runtimes": [f"nodejs:{node}"]}}
-    return {}
-
+def _ydl_common_opts(ffmpeg_dir: str, extractor_args: dict) -> dict:
+    """
+    Options shared by probe and download calls.
+    Includes bypass options for cloud IP restrictions.
+    """
+    opts = {
+        "quiet":        True,
+        "no_warnings":  True,
+        # Bypass options — help on cloud IPs that YouTube rate-limits
+        "nocheckcertificate": True,
+        "geo_bypass":         True,
+        # Use Android client — less likely to be blocked than web client
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        # Retry on failure
+        "retries":            5,
+        "fragment_retries":   5,
+    }
+    # Override extractor_args if node is available (adds JS runtime)
+    if extractor_args:
+        opts["extractor_args"] = {
+            **opts["extractor_args"],
+            **extractor_args,
+        }
+    return opts
 
 
 def download_audio(url: str, output_dir: str = "data") -> tuple[str, str]:
+    """
+    Download audio from a YouTube URL and convert to mp3.
 
+    Raises:
+        EnvironmentError : ffmpeg not found
+        ValueError       : YouTube blocked the download (cloud IP issue)
+                           or output file missing after download
+    """
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+    ffmpeg_dir = _find_ffmpeg_dir()
 
-    ffmpeg_dir      = _find_ffmpeg_dir()
-    extractor_args  = _build_extractor_args()
+    node = _find_node()
+    node_args = {"youtube": {"js_runtimes": [f"nodejs:{node}"]}} if node else {}
 
-    original_path   = os.environ.get("PATH", "")
+    original_path = os.environ.get("PATH", "")
     os.environ["PATH"] = ffmpeg_dir + os.pathsep + original_path
 
     try:
-        probe_opts: dict = {"quiet": True, "no_warnings": True}
-        if extractor_args:
-            probe_opts["extractor_args"] = extractor_args
+        common = _ydl_common_opts(ffmpeg_dir, node_args)
 
-        with yt_dlp.YoutubeDL(probe_opts) as probe:
-            info  = probe.extract_info(url, download=False)
-            title = _sanitize_filename(info.get("title", "video"))
+        try:
+            with yt_dlp.YoutubeDL(common) as probe:
+                info  = probe.extract_info(url, download=False)
+                title = _sanitize(info.get("title", "video"))
+        except Exception as e:
+            err = str(e).lower()
+            if any(x in err for x in ["sign in", "bot", "403", "429", "blocked", "unavailable"]):
+                raise ValueError(
+                    "YouTube blocked this download.\n\n"
+                    "This is a known limitation when running on cloud platforms "
+                    "(Hugging Face, Streamlit Cloud, etc.) — YouTube rate-limits "
+                    "requests from shared cloud IPs.\n\n"
+                    "✅ Workarounds:\n"
+                    "  1. Download the video locally and upload it as a video file\n"
+                    "  2. Download the transcript (.srt) from YouTube and upload it\n"
+                    "  3. Run this app locally where your IP is not blocked"
+                ) from e
+            raise
 
-        ydl_opts: dict = {
-            "format":           "bestaudio/best",
-            "outtmpl":          str(Path(output_dir) / f"{title}.%(ext)s"),
-            "postprocessors":   [{
+        ydl_opts = {
+            **common,
+            "format":          "bestaudio/best",
+            "outtmpl":         str(Path(output_dir) / f"{title}.%(ext)s"),
+            "postprocessors":  [{
                 "key":              "FFmpegExtractAudio",
                 "preferredcodec":   "mp3",
                 "preferredquality": "128",
             }],
-            "ffmpeg_location":  ffmpeg_dir,
-            "quiet":            True,
-            "no_warnings":      True,
+            "ffmpeg_location": ffmpeg_dir,
         }
-        if extractor_args:
-            ydl_opts["extractor_args"] = extractor_args
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
     finally:
-        os.environ["PATH"] = original_path  
+        os.environ["PATH"] = original_path
 
     audio_path = Path(output_dir) / f"{title}.mp3"
     if not audio_path.exists():
         raise ValueError(
-            f"Download failed — expected output not found: {audio_path}\n"
+            f"Download completed but output file not found: {audio_path}\n"
             "The video may be age-restricted, private, or region-blocked."
         )
 

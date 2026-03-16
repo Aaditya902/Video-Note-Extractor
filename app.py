@@ -62,7 +62,6 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background:#0A0A0F;col
 </style>"""
 
 
-
 def _init_state():
     defaults = {
         "input_type":   None,
@@ -72,11 +71,11 @@ def _init_state():
         "store":        None,
         "chat_history": [],
         "error":        None,
+        "traceback":    None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
-
 
 
 def _status_html(progress):
@@ -91,7 +90,6 @@ def _status_html(progress):
         else:
             h += f'<div class="step">&middot;&nbsp; {label}</div>'
     return h + '</div>'
-
 
 
 def _render_results(result):
@@ -165,7 +163,6 @@ def _render_results(result):
         st.download_button("Download JSON", data=json_content,
                            file_name=f"{slug}_{ts}.json", mime="application/json",
                            use_container_width=True)
-
 
 
 def _render_chat():
@@ -279,10 +276,11 @@ def main():
         st.session_state.store        = None
         st.session_state.chat_history = []
         st.session_state.error        = None
+        st.session_state.traceback    = None
 
         status_box = st.empty()
 
-        def on_progress(p):
+        def on_progress(p: PipelineProgress) -> None:
             status_box.markdown(_status_html(p), unsafe_allow_html=True)
 
         try:
@@ -295,10 +293,17 @@ def main():
             st.session_state.result = pipeline_result.result
             st.session_state.store  = pipeline_result.store
         except Exception as exc:
-            import traceback
-            print(f"\n[Pipeline ERROR]\n{traceback.format_exc()}")
-            st.session_state.error = str(exc)
+            import traceback as _tb
+            full_tb = _tb.format_exc()
+            print(f"\n[Pipeline ERROR]\n{full_tb}")
+            st.session_state.error     = str(exc)
+            st.session_state.traceback = full_tb
             on_progress(PipelineProgress(completed=[], active=None, error=str(exc)))
+
+    if st.session_state.get("error"):
+        st.error(f"**Pipeline failed:** {st.session_state.error}")
+        with st.expander("Show full error details", expanded=False):
+            st.code(st.session_state.get("traceback", "No traceback available"), language="")
 
     if st.session_state.result is not None:
         st.markdown("---")
