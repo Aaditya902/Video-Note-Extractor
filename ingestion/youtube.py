@@ -19,6 +19,7 @@ def _sanitize(name: str) -> str:
 
 
 def _find_ffmpeg_dir() -> str:
+    # 1. Explicit env override
     env_val = get_ffmpeg_path()
     if env_val:
         p = Path(env_val)
@@ -26,17 +27,23 @@ def _find_ffmpeg_dir() -> str:
             return str(p.parent)
         if p.is_dir():
             return str(p)
+
+    # 2. Check known locations first (more reliable than shutil.which
+    #    inside Docker containers running as non-root)
+    for d in ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/opt/local/bin"]:
+        if Path(d, "ffmpeg").exists():
+            return d
+
+    # 3. PATH lookup fallback
     binary = shutil.which("ffmpeg")
     if binary:
         return str(Path(binary).parent)
-    for d in ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
-        if Path(d, "ffmpeg").exists():
-            return d
+
     raise EnvironmentError(
         "ffmpeg not found.\n"
         "  macOS:   brew install ffmpeg\n"
         "  Ubuntu:  sudo apt install ffmpeg\n"
-        "  Docker/HF: add 'ffmpeg' to packages.txt"
+        "  Docker:  add RUN apt-get install -y ffmpeg to your Dockerfile"
     )
 
 
