@@ -1,3 +1,1 @@
-# System packages installed by Streamlit Cloud via apt-get
-# If ffmpeg errors persist, go to App Settings → Reboot app
 ffmpeg
