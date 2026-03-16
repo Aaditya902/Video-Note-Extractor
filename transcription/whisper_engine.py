@@ -36,11 +36,13 @@ def _transcribe_gemini(audio_path: str) -> list[TranscriptSegment]:
         contents = [
             types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
             types.Part.from_text(
-                "Transcribe this audio completely and accurately. "
-                "Format as timestamped segments, one per line:\n"
-                "[MM:SS] transcript text here\n\n"
-                "Include all spoken content. "
-                "If exact timestamps are unclear, space them ~30 seconds apart."
+                text=(
+                    "Transcribe this audio completely and accurately. "
+                    "Format as timestamped segments, one per line:\n"
+                    "[MM:SS] transcript text here\n\n"
+                    "Include all spoken content. "
+                    "If exact timestamps are unclear, space them ~30 seconds apart."
+                )
             ),
         ],
         config=types.GenerateContentConfig(
@@ -52,6 +54,7 @@ def _transcribe_gemini(audio_path: str) -> list[TranscriptSegment]:
 
 
 def _parse_gemini_transcript(text: str) -> list[TranscriptSegment]:
+    """Parse [MM:SS] lines from Gemini transcript response."""
     segments: list[TranscriptSegment] = []
     pattern = re.compile(r"^\[(\d{1,2}):(\d{2})\]\s*(.+)$")
 
@@ -79,7 +82,6 @@ def _parse_gemini_transcript(text: str) -> list[TranscriptSegment]:
                 start=last.start, end=last.end,
                 text=last.text + " " + line
             )
-
     if not segments and text.strip():
         segments.append(TranscriptSegment(start=0.0, end=30.0, text=text.strip()))
 
@@ -87,7 +89,6 @@ def _parse_gemini_transcript(text: str) -> list[TranscriptSegment]:
 
 
 def _transcribe_whisper(audio_path: str, model_size: str) -> list[TranscriptSegment]:
-    """Local Whisper transcription — requires openai-whisper + torch installed."""
     from functools import lru_cache
     import whisper
 
