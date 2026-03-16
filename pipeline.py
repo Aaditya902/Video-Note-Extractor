@@ -100,7 +100,8 @@ def run(input_type, input_data, whisper_model="base", on_progress=None):
     completed.append("chunk")
     on_progress(PipelineProgress(completed=list(completed), active="embed"))
 
-    store = VectorStore()
+    import uuid as _uuid
+    store = VectorStore(collection_name=f"transcript_{_uuid.uuid4().hex[:8]}")
     store.add_chunks(chunks)
     completed.append("embed")
     on_progress(PipelineProgress(completed=list(completed), active="llm"))
