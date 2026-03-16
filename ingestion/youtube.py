@@ -18,32 +18,74 @@ def _sanitize(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip()[:80]
 
 
+def _ensure_ffmpeg() -> None:
+
+    import subprocess
+    # Already installed?
+    for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
+        if Path(p).exists():
+            return
+    if shutil.which("ffmpeg"):
+        return
+    # Try to install via apt (Streamlit Cloud is Ubuntu)
+    try:
+        subprocess.run(
+            ["apt-get", "install", "-y", "ffmpeg"],
+            check=True, capture_output=True
+        )
+    except Exception:
+        try:
+            subprocess.run(
+                ["sudo", "apt-get", "install", "-y", "ffmpeg"],
+                check=True, capture_output=True
+            )
+        except Exception:
+            pass  # Will raise a clear error in _find_ffmpeg_dir
+
+
 def _find_ffmpeg_dir() -> str:
-    # 1. Explicit env override
     env_val = get_ffmpeg_path()
     if env_val:
         p = Path(env_val)
         if p.is_file():
             return str(p.parent)
-        if p.is_dir():
+        if p.is_dir() and (p / "ffmpeg").exists():
             return str(p)
 
-    # 2. Check known locations first (more reliable than shutil.which
-    #    inside Docker containers running as non-root)
-    for d in ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/opt/local/bin"]:
-        if Path(d, "ffmpeg").exists():
-            return d
 
-    # 3. PATH lookup fallback
+    for loc in [
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/opt/homebrew/bin/ffmpeg",
+        "/opt/local/bin/ffmpeg",
+        "/bin/ffmpeg",
+        "/snap/bin/ffmpeg",
+    ]:
+        if Path(loc).exists():
+            return str(Path(loc).parent)
+
+    # 3. PATH lookup
+    binary = shutil.which("ffmpeg")
+    if binary:
+        return str(Path(binary).parent)
+
+    # 4. Last resort: try installing at runtime (Streamlit Cloud fallback)
+    _ensure_ffmpeg()
+
+    # Check again after install attempt
+    for loc in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
+        if Path(loc).exists():
+            return str(Path(loc).parent)
     binary = shutil.which("ffmpeg")
     if binary:
         return str(Path(binary).parent)
 
     raise EnvironmentError(
-        "ffmpeg not found.\n"
-        "  macOS:   brew install ffmpeg\n"
-        "  Ubuntu:  sudo apt install ffmpeg\n"
-        "  Docker:  add RUN apt-get install -y ffmpeg to your Dockerfile"
+        "ffmpeg not found and could not be installed automatically.\n"
+        "  Streamlit Cloud: make sure packages.txt contains 'ffmpeg' "
+        "in the root of your repository and trigger a full reboot "
+        "(Settings → Reboot app).\n"
+        "  Local: brew install ffmpeg  /  sudo apt install ffmpeg"
     )
 
 
@@ -59,10 +101,7 @@ def _find_node() -> str | None:
 
 
 def _ydl_common_opts(ffmpeg_dir: str, extractor_args: dict) -> dict:
-    """
-    Options shared by probe and download calls.
-    Includes bypass options for cloud IP restrictions.
-    """
+
     opts = {
         "quiet":        True,
         "no_warnings":  True,
@@ -85,14 +124,7 @@ def _ydl_common_opts(ffmpeg_dir: str, extractor_args: dict) -> dict:
 
 
 def download_audio(url: str, output_dir: str = "data") -> tuple[str, str]:
-    """
-    Download audio from a YouTube URL and convert to mp3.
 
-    Raises:
-        EnvironmentError : ffmpeg not found
-        ValueError       : YouTube blocked the download (cloud IP issue)
-                           or output file missing after download
-    """
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     ffmpeg_dir = _find_ffmpeg_dir()
 
