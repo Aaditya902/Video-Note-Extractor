@@ -1,6 +1,6 @@
-# 🎬 NoteExtract.ai — AI-Powered Video Note Extractor
+# 🎬 NoteExtract.ai -  AI-Powered Video Note Extractor
 
-> Convert videos, YouTube links, and transcript files into structured, timestamped notes using a fully local RAG pipeline — with Google Gemini as the only external dependency.
+> Convert videos, YouTube links, and transcript files into structured, timestamped notes using a fully local RAG pipeline - with Google Gemini as the only external dependency.
 
 
 ---
@@ -97,7 +97,7 @@ Input (video / YouTube / transcript)
           │
           ▼
    ┌────────────┐
-   │  Chunking  │  Sliding window — 250 words, 50-word overlap
+   │  Chunking  │  Sliding window - 250 words, 50-word overlap
    └──────┬─────┘
           │
           ▼
@@ -125,11 +125,11 @@ Input (video / YouTube / transcript)
 ```
 video-note-extractor/
 │
-├── app.py                        # Streamlit UI — pure presentation layer
+├── app.py                        # Streamlit UI - pure presentation layer
 ├── pipeline.py                   # Pipeline orchestration (ingest → extract)
-├── config.py                     # All env config — single source of truth
+├── config.py                     # All env config - single source of truth
 ├── models.py                     # Shared Pydantic + dataclass types
-├── pyproject.toml                # Package config — clean absolute imports
+├── pyproject.toml                # Package config - clean absolute imports
 │
 ├── ingestion/
 │   ├── local_video.py            # FFmpeg audio extraction
@@ -158,7 +158,7 @@ video-note-extractor/
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `GEMINI_API_KEY` | ✅ Yes | — | Free key from [aistudio.google.com](https://aistudio.google.com) |
+| `GEMINI_API_KEY` | ✅ Yes | - | Free key from [aistudio.google.com](https://aistudio.google.com) |
 | `GEMINI_MODEL` | No | `gemini-2.0-flash` | Gemini model to use |
 | `WHISPER_MODEL` | No | `base` | `tiny` / `base` / `small` / `medium` / `large` |
 | `FFMPEG_PATH` | No | auto-detected | Path to FFmpeg `bin/` directory |
@@ -173,9 +173,9 @@ This project was built to run entirely for free:
 | Service | Cost | Limit |
 |---|---|---|
 | **Gemini API** | Free | 1,500 req/day · 15 req/min |
-| **Whisper** | Free | Unlimited — runs locally |
-| **Embeddings** | Free | Unlimited — runs locally |
-| **ChromaDB** | Free | Unlimited — in-memory |
+| **Whisper** | Free | Unlimited - runs locally |
+| **Embeddings** | Free | Unlimited - runs locally |
+| **ChromaDB** | Free | Unlimited - in-memory |
 
 ---
 
@@ -186,7 +186,7 @@ This project was built to run entirely for free:
 | UI | Streamlit |
 | Pipeline orchestration | Python (custom) |
 | Speech-to-text | OpenAI Whisper (local) |
-| Embeddings | SentenceTransformers — `all-MiniLM-L6-v2` (local) |
+| Embeddings | SentenceTransformers - `all-MiniLM-L6-v2` (local) |
 | Vector store | ChromaDB (in-memory) |
 | LLM | Google Gemini 2.0 Flash (API) |
 | Video download | yt-dlp |
