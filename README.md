@@ -1,4 +1,4 @@
-# 🎬 NoteExtract.ai -  AI-Powered Video Note Extractor
+# 🎬 NoteExtract.ai:  AI-Powered Video Note Extractor
 
 > Convert videos, YouTube links, and transcript files into structured, timestamped notes using a fully local RAG pipeline - with Google Gemini as the only external dependency.
 
@@ -7,14 +7,14 @@
 
 ## ✨ What It Does
 
-Feed it a video file, a YouTube URL, or a transcript — and get back:
+Feed it a video file, a YouTube URL, or a transcript - and get back:
 
 - 📝 **Timestamped notes** with headings and key insights
 - 📌 **Executive summary** of the full content
 - ✅ **Action items** extracted automatically
 - 🏷️ **Key concepts / tags** for quick scanning
 - 💬 **Q&A chat** grounded strictly in the extracted notes
-- 📥 **Export** as Markdown or JSON — one click, no sign-up
+- 📥 **Export** as Markdown or JSON - one click, no sign-up
 
 ---
 
@@ -25,7 +25,7 @@ Feed it a video file, a YouTube URL, or a transcript — and get back:
 |---|---|---|
 | Python 3.10+ | Runtime | [python.org](https://python.org) |
 | FFmpeg | Video/audio processing | See below |
-| Gemini API Key | LLM extraction | [aistudio.google.com](https://aistudio.google.com) — free |
+| Gemini API Key | LLM extraction | [aistudio.google.com](https://aistudio.google.com) - free |
 
 **Install FFmpeg:**
 
