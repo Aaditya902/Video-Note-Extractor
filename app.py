@@ -293,7 +293,7 @@ def main():
             key="transcript_paste",
         )
         if pasted and pasted.strip():
-            # Encode pasted text as bytes — same interface as file upload
+            # Encode pasted text as bytes - same interface as file upload
             st.session_state.input_type = InputType.FILE
             st.session_state.input_data = ("pasted_transcript.txt", pasted.strip().encode("utf-8"))
             st.session_state.ready      = True
