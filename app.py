@@ -274,15 +274,31 @@ def main():
             st.session_state.ready      = True
 
     with t3:
-        st.markdown("##### Upload a transcript file")
-        st.caption("Supported: .txt  .srt  .vtt")
-        uf = st.file_uploader("transcript", type=["txt","srt","vtt"],
-                               label_visibility="collapsed", key="fu")
-        if uf is not None:
+        st.markdown("##### Paste your transcript")
+        st.caption(
+            "Copy transcript text from YouTube (. . . → Show transcript) "
+            "or any other source and paste it below."
+        )
+        pasted = st.text_area(
+            "transcript_paste",
+            placeholder=(
+                "Paste your transcript here...\n\n"
+                "Example:\n"
+                "[00:00] Welcome to this video.\n"
+                "[00:15] Today we will cover three topics.\n"
+                "[01:30] Let\'s start with the first one."
+            ),
+            height=220,
+            label_visibility="collapsed",
+            key="transcript_paste",
+        )
+        if pasted and pasted.strip():
+            # Encode pasted text as bytes — same interface as file upload
             st.session_state.input_type = InputType.FILE
-            st.session_state.input_data = (uf.name, uf.read())
+            st.session_state.input_data = ("pasted_transcript.txt", pasted.strip().encode("utf-8"))
             st.session_state.ready      = True
-            st.success(f"Ready: {uf.name}  ({uf.size:,} bytes)")
+            word_count = len(pasted.split())
+            st.success(f"Ready: {word_count:,} words pasted")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
