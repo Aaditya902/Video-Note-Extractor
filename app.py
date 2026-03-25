@@ -259,12 +259,12 @@ def main():
             "**If the YouTube tab fails, use one of these instead:**\n\n"
             "**Option 1 — Upload the video file 📁**\n"
             "Download the video to your device and upload it in the VIDEO FILE tab.\n\n"
-            "**Option 2 — Upload the transcript 📄** *(fastest)*\n"
-            "1. Open the YouTube video in your browser\n"
-            "2. Click **. . .** (below the video) → **Show transcript**\n"
-            "3. Copy all the transcript text\n"
-            "4. Paste it into Notepad and save**\n"
-            "5. Upload it in the TRANSCRIPT FILE tab"
+            "**Option 2 — Upload the transcript 📄** *(fastest).*\n"
+            "1. Open the YouTube video in your browser.\n"
+            "2. Click **. . .** (below the video) → **Show transcript.**\n"
+            "3. Copy all the transcript text.\n"
+            "4. Paste it into Notepad and save.**\n"
+            "5. Upload it in the TRANSCRIPT FILE tab."
         )
         url = st.text_input("url", placeholder="https://www.youtube.com/watch?v=...",
                             label_visibility="collapsed", key="yt_url")
