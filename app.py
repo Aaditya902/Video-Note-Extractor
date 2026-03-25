@@ -234,7 +234,7 @@ def main():
         st.markdown("**Free tier limits**")
         st.caption("Gemini: 1,500 req/day · 15/min\nWhisper: unlimited (local)\nEmbeddings: unlimited (local)")
 
-    t1, t2, t3 = st.tabs(["VIDEO FILE", "YOUTUBE URL", "TRANSCRIPT FILE"])
+    t1, t2, t3 = st.tabs(["VIDEO FILE", "YOUTUBE URL", "TRANSCRIPT"])
 
     with t1:
         st.markdown("##### Upload a video file")
