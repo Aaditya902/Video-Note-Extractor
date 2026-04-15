@@ -1,35 +1,42 @@
-# Video Note Extractor - Python dependencies
+# ─────────────────────────────────────────────────────────────────
+# Video Note Extractor — Python dependencies
 # Python 3.10+ required
 #
 # Works on:
 #   Local machine    : full pipeline (Whisper + FFmpeg + Gemini)
 #   Streamlit Cloud  : Gemini-only pipeline (no Whisper/torch)
+# ─────────────────────────────────────────────────────────────────
 
+# ── Web UI ────────────────────────────────────────────────────────
 streamlit>=1.32.0
 
-# ── LLM — Google Gemini (free tier, no credit card) 
-# Free: 1,500 req/day · 15/min · 1M token context
-# Key:  https://aistudio.google.com
+# ── LLM — Google Gemini (free tier, no credit card) ──────────────
 google-genai>=1.0.0
 
+# ── Config ────────────────────────────────────────────────────────
 python-dotenv>=1.0.0
 
-# Also requires ffmpeg on system PATH
-# Streamlit Cloud: installed via packages.txt
-# Local:  brew install ffmpeg  /  sudo apt install ffmpeg
+# ── YouTube download ──────────────────────────────────────────────
 yt-dlp>=2024.1.0
 
-sentence-transformers>=2.7.0   # Local embeddings (~80MB one-time download)
-chromadb>=0.4.0                # In-memory vector store
+# ── RAG pipeline ──────────────────────────────────────────────────
+sentence-transformers>=2.7.0
 
+# ChromaDB pinned to avoid protobuf conflict.
+# chromadb>=0.5.0 pulls in opentelemetry which requires protobuf>=4.x
+# but google-genai also pins protobuf — versions clash on Python 3.14.
+# chromadb 0.4.x works with protobuf 3.20.x which is compatible with all deps.
+chromadb>=0.4.0,<0.5.0
+protobuf>=3.20.0,<4.0.0
+
+# ── Data validation ───────────────────────────────────────────────
 pydantic>=2.0.0
 
+# ── Utilities ─────────────────────────────────────────────────────
 numpy>=1.24.0
 tqdm>=4.65.0
 rich>=13.0.0
 
-# Streamlit Cloud uses Gemini Audio instead (see transcription/whisper_engine.py)
-# Uncomment below for local use with offline Whisper transcription:
-#
+# ── Local transcription only (NOT needed on Streamlit Cloud) ──────
 # openai-whisper>=20231117
 # torch>=2.0.0
