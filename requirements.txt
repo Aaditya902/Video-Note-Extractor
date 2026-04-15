@@ -1,10 +1,6 @@
 # ─────────────────────────────────────────────────────────────────
 # Video Note Extractor — Python dependencies
 # Python 3.10+ required
-#
-# Works on:
-#   Local machine    : full pipeline (Whisper + FFmpeg + Gemini)
-#   Streamlit Cloud  : Gemini-only pipeline (no Whisper/torch)
 # ─────────────────────────────────────────────────────────────────
 
 # ── Web UI ────────────────────────────────────────────────────────
@@ -22,18 +18,18 @@ yt-dlp>=2024.1.0
 # ── RAG pipeline ──────────────────────────────────────────────────
 sentence-transformers>=2.7.0
 
-# ChromaDB pinned to avoid protobuf conflict.
-# chromadb>=0.5.0 pulls in opentelemetry which requires protobuf>=4.x
-# but google-genai also pins protobuf — versions clash on Python 3.14.
-# chromadb 0.4.x works with protobuf 3.20.x which is compatible with all deps.
+# Dependency pin explanation:
+#   chromadb 0.4.x uses np.float_ which was removed in numpy 2.0
+#   chromadb 0.5.x+ uses opentelemetry which conflicts with protobuf on Py3.14
+#   Solution: pin numpy<2.0 to keep chromadb 0.4.x working correctly
 chromadb>=0.4.0,<0.5.0
+numpy>=1.24.0,<2.0.0
 protobuf>=3.20.0,<4.0.0
 
 # ── Data validation ───────────────────────────────────────────────
 pydantic>=2.0.0
 
 # ── Utilities ─────────────────────────────────────────────────────
-numpy>=1.24.0
 tqdm>=4.65.0
 rich>=13.0.0
 
