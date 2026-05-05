@@ -12,6 +12,7 @@ from config import has_gemini_key
 from pipeline import InputType, PipelineProgress, STEPS, run as run_pipeline
 from llm.qa_engine import answer as qa_answer
 
+# ── Page config ────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="NoteExtract.ai",
@@ -20,6 +21,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Constants ──────────────────────────────────────────────────────────────────
 
 COLORS = ["#00FFB2", "#7C6FFF", "#FF6B9D", "#FFB347", "#00D4FF", "#FF6B6B", "#A8FF78"]
 
@@ -62,6 +64,8 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background:#0A0A0F;col
 </style>"""
 
 
+# ── Session state ──────────────────────────────────────────────────────────────
+
 def _init_state():
     defaults = {
         "input_type":   None,
@@ -78,6 +82,8 @@ def _init_state():
             st.session_state[key] = val
 
 
+# ── Status renderer ────────────────────────────────────────────────────────────
+
 def _status_html(progress):
     h = '<div class="status-box">'
     for key, label in STEPS:
@@ -91,6 +97,8 @@ def _status_html(progress):
             h += f'<div class="step">&middot;&nbsp; {label}</div>'
     return h + '</div>'
 
+
+# ── Results renderer ───────────────────────────────────────────────────────────
 
 def _render_results(result):
     import json
@@ -165,6 +173,8 @@ def _render_results(result):
                            use_container_width=True)
 
 
+# ── Chat renderer ──────────────────────────────────────────────────────────────
+
 def _render_chat():
     st.markdown('<div class="sec-label">Ask About These Notes</div>', unsafe_allow_html=True)
     st.caption("Answers are grounded strictly in the extracted content.")
@@ -193,6 +203,8 @@ def _render_chat():
         st.session_state.chat_history.append({"role": "assistant", "text": response})
         st.rerun()
 
+
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
     _init_state()
@@ -234,7 +246,7 @@ def main():
         st.markdown("**Free tier limits**")
         st.caption("Gemini: 1,500 req/day · 15/min\nWhisper: unlimited (local)\nEmbeddings: unlimited (local)")
 
-    t1, t2, t3 = st.tabs(["VIDEO FILE", "YOUTUBE URL", "TRANSCRIPT"])
+    t1, t2, t3 = st.tabs(["VIDEO FILE", "YOUTUBE URL", "PASTE TRANSCRIPT"])
 
     with t1:
         st.markdown("##### Upload a video file")
@@ -251,20 +263,12 @@ def main():
 
     with t2:
         st.markdown("##### Paste a YouTube URL")
-        st.info(
-            "**⚠️ YouTube downloads may not work on cloud deployments.**\n\n"
-            "YouTube actively blocks download requests from shared cloud server IPs "
-            "(Streamlit Cloud, Hugging Face, etc.) with a 403 Forbidden error. "
-            "This is a YouTube restriction, not a bug in this app.\n\n"
-            "**If the YouTube tab fails, use one of these instead:**\n\n"
-            "**Option 1 — Upload the video file 📁**\n"
-            "Download the video to your device and upload it in the VIDEO FILE tab.\n\n"
-            "**Option 2 — Upload the transcript 📄** *(fastest).*\n"
-            "1. Open the YouTube.\n"
-            "2. Click **. . .** (below the video) → **Show transcript.**\n"
-            "3. Copy all the transcript text.\n"
-            "4. Paste it in the TRANSCRIPT tab."
+        st.success(
+            "✅ **YouTube is fully supported** - powered by Gemini's native video understanding.\n\n"
+            "Paste any public YouTube URL below. Gemini processes the video directly "
+            "on Google's infrastructure - no downloading, no IP blocking."
         )
+        st.caption("Supports: youtube.com/watch?v=...  ·  youtu.be/...  ·  youtube.com/shorts/...")
         url = st.text_input("url", placeholder="https://www.youtube.com/watch?v=...",
                             label_visibility="collapsed", key="yt_url")
         if url and url.startswith("http"):
@@ -292,7 +296,7 @@ def main():
             key="transcript_paste",
         )
         if pasted and pasted.strip():
-            # Encode pasted text as bytes - same interface as file upload
+            # Encode pasted text as bytes — same interface as file upload
             st.session_state.input_type = InputType.FILE
             st.session_state.input_data = ("pasted_transcript.txt", pasted.strip().encode("utf-8"))
             st.session_state.ready      = True
@@ -330,6 +334,7 @@ def main():
             st.session_state.traceback = full_tb
             on_progress(PipelineProgress(completed=[], active=None, error=str(exc)))
 
+    # Persistent error — survives Streamlit reruns so user can read it
     if st.session_state.get("error"):
         st.error(f"**Pipeline failed:** {st.session_state.error}")
         with st.expander("Show full error details", expanded=False):

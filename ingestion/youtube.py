@@ -1,3 +1,14 @@
+"""
+ingestion/youtube.py — Fetch YouTube video transcript via Gemini native URL support.
+
+Key insight: Gemini supports YouTube URLs natively via file_data.file_uri.
+Google fetches the video on their own infrastructure — completely bypassing
+the cloud IP blocking issue (HTTP 403) that affects yt-dlp and
+youtube-transcript-api on shared cloud servers.
+
+No yt-dlp, no FFmpeg, no audio download needed for YouTube URLs.
+"""
+
 import sys
 from pathlib import Path
 
@@ -5,179 +16,134 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-import os
 import re
-import shutil
 
-import yt_dlp
-
-from config import get_ffmpeg_path, is_cloud
+from models import TranscriptSegment
 
 
-def _sanitize(name: str) -> str:
-    return re.sub(r'[\\/*?:"<>|]', "_", name).strip()[:80]
-
-
-def _ensure_ffmpeg() -> None:
-
-    import subprocess
-    # Already installed?
-    for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
-        if Path(p).exists():
-            return
-    if shutil.which("ffmpeg"):
-        return
-    # Try to install via apt (Streamlit Cloud is Ubuntu)
-    try:
-        subprocess.run(
-            ["apt-get", "install", "-y", "ffmpeg"],
-            check=True, capture_output=True
-        )
-    except Exception:
-        try:
-            subprocess.run(
-                ["sudo", "apt-get", "install", "-y", "ffmpeg"],
-                check=True, capture_output=True
-            )
-        except Exception:
-            pass  # Will raise a clear error in _find_ffmpeg_dir
-
-
-def _find_ffmpeg_dir() -> str:
-    env_val = get_ffmpeg_path()
-    if env_val:
-        p = Path(env_val)
-        if p.is_file():
-            return str(p.parent)
-        if p.is_dir() and (p / "ffmpeg").exists():
-            return str(p)
-
-
-    for loc in [
-        "/usr/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/opt/homebrew/bin/ffmpeg",
-        "/opt/local/bin/ffmpeg",
-        "/bin/ffmpeg",
-        "/snap/bin/ffmpeg",
-    ]:
-        if Path(loc).exists():
-            return str(Path(loc).parent)
-
-    # 3. PATH lookup
-    binary = shutil.which("ffmpeg")
-    if binary:
-        return str(Path(binary).parent)
-
-    # 4. Last resort: try installing at runtime (Streamlit Cloud fallback)
-    _ensure_ffmpeg()
-
-    # Check again after install attempt
-    for loc in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
-        if Path(loc).exists():
-            return str(Path(loc).parent)
-    binary = shutil.which("ffmpeg")
-    if binary:
-        return str(Path(binary).parent)
-
-    raise EnvironmentError(
-        "ffmpeg not found and could not be installed automatically.\n"
-        "  Streamlit Cloud: make sure packages.txt contains 'ffmpeg' "
-        "in the root of your repository and trigger a full reboot "
-        "(Settings → Reboot app).\n"
-        "  Local: brew install ffmpeg  /  sudo apt install ffmpeg"
+def _extract_video_id(url: str) -> str:
+    """Extract YouTube video ID from any valid YouTube URL format."""
+    patterns = [
+        r"(?:v=|youtu\.be/|embed/|shorts/)([a-zA-Z0-9_-]{11})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    raise ValueError(
+        f"Could not extract video ID from URL: {url}\n"
+        "Supported formats: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/shorts/ID"
     )
 
 
-def _find_node() -> str | None:
-    for name in ("node", "nodejs"):
-        found = shutil.which(name)
-        if found:
-            return found
-    for p in ("/usr/bin/node", "/usr/local/bin/node", "/opt/homebrew/bin/node"):
-        if Path(p).exists():
-            return p
-    return None
+def _parse_transcript(text: str) -> list[TranscriptSegment]:
+    """Parse [MM:SS] timestamped lines into TranscriptSegments."""
+    segments: list[TranscriptSegment] = []
+    pattern = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*(.+)$")
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        match = pattern.match(line)
+        if match:
+            a, b, c, content = match.groups()
+            start = int(a) * 3600 + int(b) * 60 + int(c or 0) if c else int(a) * 60 + int(b)
+            if segments:
+                prev = segments[-1]
+                segments[-1] = TranscriptSegment(start=prev.start, end=float(start), text=prev.text)
+            segments.append(TranscriptSegment(
+                start=float(start), end=float(start) + 30.0, text=content.strip()
+            ))
+        elif segments:
+            last = segments[-1]
+            segments[-1] = TranscriptSegment(
+                start=last.start, end=last.end, text=last.text + " " + line
+            )
+
+    if not segments and text.strip():
+        segments.append(TranscriptSegment(start=0.0, end=30.0, text=text.strip()))
+
+    return segments
 
 
-def _ydl_common_opts(ffmpeg_dir: str, extractor_args: dict) -> dict:
+def fetch_transcript(url: str) -> tuple[list[TranscriptSegment], str]:
+    """
+    Fetch YouTube video transcript using Gemini's native YouTube URL support.
 
-    opts = {
-        "quiet":        True,
-        "no_warnings":  True,
-        # Bypass options — help on cloud IPs that YouTube rate-limits
-        "nocheckcertificate": True,
-        "geo_bypass":         True,
-        # Use Android client — less likely to be blocked than web client
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-        # Retry on failure
-        "retries":            5,
-        "fragment_retries":   5,
-    }
-    # Override extractor_args if node is available (adds JS runtime)
-    if extractor_args:
-        opts["extractor_args"] = {
-            **opts["extractor_args"],
-            **extractor_args,
-        }
-    return opts
+    Gemini accepts YouTube URLs directly via file_data.file_uri — Google
+    fetches the video on their own servers, completely bypassing cloud IP
+    blocking. No yt-dlp, no FFmpeg, no audio download required.
 
+    Args:
+        url: Any valid YouTube URL
 
-def download_audio(url: str, output_dir: str = "data") -> tuple[str, str]:
+    Returns:
+        (segments, video_title)
 
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    ffmpeg_dir = _find_ffmpeg_dir()
+    Raises:
+        ValueError:       invalid URL or Gemini cannot access the video
+        EnvironmentError: GEMINI_API_KEY not set
+    """
+    from llm.gemini_client import get_client, get_gemini_model
+    from google.genai import types
 
-    node = _find_node()
-    node_args = {"youtube": {"js_runtimes": [f"nodejs:{node}"]}} if node else {}
+    video_id = _extract_video_id(url)
+    clean_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    original_path = os.environ.get("PATH", "")
-    os.environ["PATH"] = ffmpeg_dir + os.pathsep + original_path
+    prompt = (
+        "You are a transcription and analysis assistant. "
+        "Watch this YouTube video and do two things:\n\n"
+        "1. TITLE: Output the video title on the first line as: TITLE: <title here>\n\n"
+        "2. TRANSCRIPT: Transcribe all spoken content completely.\n"
+        "   Format every line as: [MM:SS] transcript text here\n"
+        "   Example:\n"
+        "   [00:00] Welcome to this tutorial.\n"
+        "   [00:30] Today we will cover three main topics.\n"
+        "   [01:45] Let's start with the first concept.\n\n"
+        "Rules:\n"
+        "- Every line MUST start with [MM:SS] timestamp\n"
+        "- New timestamp every 20-30 seconds\n"
+        "- Include ALL spoken content, nothing omitted\n"
+        "- Output ONLY the title line and transcript lines, nothing else"
+    )
 
-    try:
-        common = _ydl_common_opts(ffmpeg_dir, node_args)
+    client   = get_client()
+    model    = get_gemini_model()
 
-        try:
-            with yt_dlp.YoutubeDL(common) as probe:
-                info  = probe.extract_info(url, download=False)
-                title = _sanitize(info.get("title", "video"))
-        except Exception as e:
-            err = str(e).lower()
-            if any(x in err for x in ["sign in", "bot", "403", "429", "blocked", "unavailable"]):
-                raise ValueError(
-                    "YouTube blocked this download.\n\n"
-                    "This is a known limitation when running on cloud platforms "
-                    "(Hugging Face, Streamlit Cloud, etc.) — YouTube rate-limits "
-                    "requests from shared cloud IPs.\n\n"
-                    "✅ Workarounds:\n"
-                    "  1. Download the video locally and upload it as a video file\n"
-                    "  2. Download the transcript (.srt) from YouTube and upload it\n"
-                    "  3. Run this app locally where your IP is not blocked"
-                ) from e
-            raise
+    video_part = types.Part.from_uri(
+        file_uri  = clean_url,
+        mime_type = "video/mp4",
+    )
 
-        ydl_opts = {
-            **common,
-            "format":          "bestaudio/best",
-            "outtmpl":         str(Path(output_dir) / f"{title}.%(ext)s"),
-            "postprocessors":  [{
-                "key":              "FFmpegExtractAudio",
-                "preferredcodec":   "mp3",
-                "preferredquality": "128",
-            }],
-            "ffmpeg_location": ffmpeg_dir,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+    response = client.models.generate_content(
+        model    = model,
+        contents = [
+            video_part,
+            types.Part.from_text(text=prompt),
+        ],
+    )
 
-    finally:
-        os.environ["PATH"] = original_path
+    raw = response.text or ""
 
-    audio_path = Path(output_dir) / f"{title}.mp3"
-    if not audio_path.exists():
+    # Extract title from first line if present
+    title = "YouTube Video"
+    lines = raw.strip().splitlines()
+    transcript_lines = []
+
+    for line in lines:
+        if line.startswith("TITLE:"):
+            title = line.replace("TITLE:", "").strip()
+        else:
+            transcript_lines.append(line)
+
+    transcript_text = "\n".join(transcript_lines)
+    segments = _parse_transcript(transcript_text)
+
+    if not segments:
         raise ValueError(
-            f"Download completed but output file not found: {audio_path}\n"
-            "The video may be age-restricted, private, or region-blocked."
+            "Gemini could not transcribe this video.\n"
+            "The video may be private, age-restricted, or have no speech."
         )
 
-    return str(audio_path), title
+    return segments, title

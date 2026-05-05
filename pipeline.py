@@ -61,10 +61,10 @@ def _ingest(input_type, input_data, tmp_dir, on_progress, completed):
         completed.append("transcribe")
 
     elif input_type == InputType.YOUTUBE:
-        audio_path, title = download_audio(input_data, output_dir=tmp_dir)
+        from ingestion.youtube import fetch_transcript
+        # Gemini fetches YouTube natively — no yt-dlp, no FFmpeg, no IP blocking
+        segments, title = fetch_transcript(input_data)
         completed.append("ingest")
-        on_progress(PipelineProgress(completed=list(completed), active="transcribe"))
-        segments = transcribe(audio_path)
         completed.append("transcribe")
 
     elif input_type == InputType.FILE:
@@ -100,6 +100,8 @@ def run(input_type, input_data, whisper_model="base", on_progress=None):
     completed.append("chunk")
     on_progress(PipelineProgress(completed=list(completed), active="embed"))
 
+    # Unique collection name per run — prevents ChromaDB reusing
+    # the same in-memory collection when processing multiple videos
     import uuid as _uuid
     store = VectorStore(collection_name=f"transcript_{_uuid.uuid4().hex[:8]}")
     store.add_chunks(chunks)
