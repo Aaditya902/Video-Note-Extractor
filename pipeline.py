@@ -15,7 +15,6 @@ from processing.vector_store import VectorStore
 from processing.chunker import chunk_segments
 from llm.gemini_extractor import extract_notes
 from ingestion.local_video import extract_audio
-from ingestion.youtube import download_audio
 from ingestion.file_loader import load_file
 from transcription.whisper_engine import transcribe
 
