@@ -124,7 +124,27 @@ def fetch_transcript(url: str) -> tuple[list[TranscriptSegment], str]:
         ],
     )
 
-    raw = response.text or ""
+    # Check for None/empty response — Gemini returns None when it
+    # cannot access the video (private, region-locked, safety filter, etc.)
+    if not response.text:
+        finish_reason = ""
+        try:
+            finish_reason = str(response.candidates[0].finish_reason) if response.candidates else ""
+        except Exception:
+            pass
+        raise ValueError(
+            "Gemini could not process this YouTube video.\n\n"
+            f"Finish reason: {finish_reason or 'unknown'}\n\n"
+            "Common causes:\n"
+            "  • Video is private or age-restricted\n"
+            "  • Video is not available in the region\n"
+            "  • Video has no speech / is music-only\n"
+            "  • Video is too long (try a shorter video first)\n"
+            "  • Content blocked by Gemini safety filters\n\n"
+            "Try the PASTE TRANSCRIPT tab instead:\n"
+            "  Open video → click '. . .' → Show transcript → copy → paste"
+        )
+    raw = response.text
 
     # Extract title from first line if present
     title = "YouTube Video"
