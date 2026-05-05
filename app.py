@@ -263,11 +263,6 @@ def main():
 
     with t2:
         st.markdown("##### Paste a YouTube URL")
-        st.success(
-            "✅ **YouTube is fully supported** - powered by Gemini's native video understanding.\n\n"
-            "Paste any public YouTube URL below. Gemini processes the video directly "
-            "on Google's infrastructure - no downloading, no IP blocking."
-        )
         st.caption("Supports: youtube.com/watch?v=...  ·  youtu.be/...  ·  youtube.com/shorts/...")
         url = st.text_input("url", placeholder="https://www.youtube.com/watch?v=...",
                             label_visibility="collapsed", key="yt_url")
