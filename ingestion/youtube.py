@@ -108,49 +108,21 @@ def fetch_transcript(url: str) -> tuple[list[TranscriptSegment], str]:
         "- Output ONLY the title line and transcript lines, nothing else"
     )
 
-    client     = get_client()
-    model      = get_gemini_model()
-    max_retries = 3
+    client   = get_client()
+    model    = get_gemini_model()
 
     video_part = types.Part.from_uri(
         file_uri  = clean_url,
         mime_type = "video/mp4",
     )
 
-    # Retry on 503 (high demand) and 429 (rate limit) — same logic as gemini_client
-    response   = None
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model    = model,
-                contents = [
-                    video_part,
-                    types.Part.from_text(text=prompt),
-                ],
-            )
-            break  # success
-        except Exception as e:
-            err_str = str(e).lower()
-            is_retryable = any(x in err_str for x in [
-                "503", "unavailable", "429", "rate limit",
-                "resource_exhausted", "overloaded", "high demand"
-            ])
-            if is_retryable and attempt < max_retries - 1:
-                import time
-                wait = 5 * (3 ** attempt)  # 5s → 15s → 45s
-                print(f"[YouTube/Gemini] {e} — retrying in {wait}s "
-                      f"(attempt {attempt + 1}/{max_retries})")
-                time.sleep(wait)
-                last_error = e
-            else:
-                if is_retryable:
-                    raise RuntimeError(
-                        "Gemini is temporarily unavailable (high demand).\n"
-                        "Please wait 1-2 minutes and try again.\n"
-                        f"Original error: {e}"
-                    ) from e
-                raise
+    response = client.models.generate_content(
+        model    = model,
+        contents = [
+            video_part,
+            types.Part.from_text(text=prompt),
+        ],
+    )
 
     # Check for None/empty response — Gemini returns None when it
     # cannot access the video (private, region-locked, safety filter, etc.)
