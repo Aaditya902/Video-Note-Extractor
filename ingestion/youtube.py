@@ -1,11 +1,9 @@
 """
 ingestion/youtube.py — Fetch YouTube video transcript via Gemini native URL support.
-
 Key insight: Gemini supports YouTube URLs natively via file_data.file_uri.
 Google fetches the video on their own infrastructure — completely bypassing
 the cloud IP blocking issue (HTTP 403) that affects yt-dlp and
 youtube-transcript-api on shared cloud servers.
-
 No yt-dlp, no FFmpeg, no audio download needed for YouTube URLs.
 """
 
@@ -70,17 +68,13 @@ def _parse_transcript(text: str) -> list[TranscriptSegment]:
 def fetch_transcript(url: str) -> tuple[list[TranscriptSegment], str]:
     """
     Fetch YouTube video transcript using Gemini's native YouTube URL support.
-
     Gemini accepts YouTube URLs directly via file_data.file_uri — Google
     fetches the video on their own servers, completely bypassing cloud IP
     blocking. No yt-dlp, no FFmpeg, no audio download required.
-
     Args:
         url: Any valid YouTube URL
-
     Returns:
         (segments, video_title)
-
     Raises:
         ValueError:       invalid URL or Gemini cannot access the video
         EnvironmentError: GEMINI_API_KEY not set
@@ -108,21 +102,49 @@ def fetch_transcript(url: str) -> tuple[list[TranscriptSegment], str]:
         "- Output ONLY the title line and transcript lines, nothing else"
     )
 
-    client   = get_client()
-    model    = get_gemini_model()
+    client     = get_client()
+    model      = get_gemini_model()
+    max_retries = 3
 
     video_part = types.Part.from_uri(
         file_uri  = clean_url,
         mime_type = "video/mp4",
     )
 
-    response = client.models.generate_content(
-        model    = model,
-        contents = [
-            video_part,
-            types.Part.from_text(text=prompt),
-        ],
-    )
+    # Retry on 503 (high demand) and 429 (rate limit) — same logic as gemini_client
+    response   = None
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model    = model,
+                contents = [
+                    video_part,
+                    types.Part.from_text(text=prompt),
+                ],
+            )
+            break  # success
+        except Exception as e:
+            err_str = str(e).lower()
+            is_retryable = any(x in err_str for x in [
+                "503", "unavailable", "429", "rate limit",
+                "resource_exhausted", "overloaded", "high demand"
+            ])
+            if is_retryable and attempt < max_retries - 1:
+                import time
+                wait = 5 * (3 ** attempt)  # 5s → 15s → 45s
+                print(f"[YouTube/Gemini] {e} — retrying in {wait}s "
+                      f"(attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait)
+                last_error = e
+            else:
+                if is_retryable:
+                    raise RuntimeError(
+                        "Gemini is temporarily unavailable (high demand).\n"
+                        "Please wait 1-2 minutes and try again.\n"
+                        f"Original error: {e}"
+                    ) from e
+                raise
 
     # Check for None/empty response — Gemini returns None when it
     # cannot access the video (private, region-locked, safety filter, etc.)
